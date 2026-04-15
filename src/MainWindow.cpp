@@ -9,6 +9,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QHeaderView>
+#include <QFileDialog>
+#include <QFileInfo>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -17,6 +19,9 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1024, 768);
 
     QMenu *fileMenu = menuBar()->addMenu("&File");
+    fileMenu->addAction("&Open...", QKeySequence::Open, this, &MainWindow::openFileDialog);
+    fileMenu->addAction("&Save", QKeySequence::Save, this, &MainWindow::saveFile);
+    fileMenu->addSeparator();
     fileMenu->addAction("E&xit", QKeySequence::Quit, QApplication::instance(), &QApplication::quit);
 
     m_fileModel = new QFileSystemModel(this);
@@ -31,7 +36,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_treeView->header()->hide();
 
     m_editor = new QPlainTextEdit;
-    m_editor->setReadOnly(true);
 
     auto *splitter = new QSplitter;
     splitter->addWidget(m_treeView);
@@ -48,12 +52,37 @@ void MainWindow::openFile(const QModelIndex &index)
     if (m_fileModel->isDir(index))
         return;
 
-    QString path = m_fileModel->filePath(index);
+    loadFile(m_fileModel->filePath(index));
+}
+
+void MainWindow::openFileDialog()
+{
+    QString path = QFileDialog::getOpenFileName(this, "Open File", QDir::currentPath());
+    if (!path.isEmpty())
+        loadFile(path);
+}
+
+void MainWindow::saveFile()
+{
+    if (m_currentFilePath.isEmpty())
+        return;
+
+    QFile file(m_currentFilePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+
+    QTextStream out(&file);
+    out << m_editor->toPlainText();
+}
+
+void MainWindow::loadFile(const QString &path)
+{
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
 
     QTextStream in(&file);
     m_editor->setPlainText(in.readAll());
-    setWindowTitle("sild - " + m_fileModel->fileName(index));
+    m_currentFilePath = path;
+    setWindowTitle("sild - " + QFileInfo(path).fileName());
 }

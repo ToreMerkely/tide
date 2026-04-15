@@ -15,11 +15,16 @@ public:
 
 private slots:
     void openFile(const QModelIndex &index);
+    void openFileDialog();
+    void saveFile();
 
 private:
+    void loadFile(const QString &path);
+
     QTreeView *m_treeView;
     QPlainTextEdit *m_editor;
     QFileSystemModel *m_fileModel;
+    QString m_currentFilePath;
 };
 
 #endif
