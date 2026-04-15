@@ -19,6 +19,7 @@
 #include <QShortcut>
 #include <QTextBlock>
 #include <QVBoxLayout>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -88,6 +89,12 @@ MainWindow::MainWindow(QWidget *parent)
     // Start LSP
     m_lsp = new LspClient(QDir::currentPath(), this);
     m_lsp->start();
+
+    // Auto-save on idle
+    m_autoSaveTimer = new QTimer(this);
+    m_autoSaveTimer->setSingleShot(true);
+    m_autoSaveTimer->setInterval(3000);
+    connect(m_autoSaveTimer, &QTimer::timeout, this, &MainWindow::saveAll);
 }
 
 void MainWindow::openFile(const QModelIndex &index)
@@ -107,7 +114,11 @@ void MainWindow::openFileDialog()
 
 void MainWindow::saveFile()
 {
-    int index = m_tabWidget->currentIndex();
+    saveTab(m_tabWidget->currentIndex());
+}
+
+void MainWindow::saveTab(int index)
+{
     if (index < 0)
         return;
 
@@ -115,16 +126,35 @@ void MainWindow::saveFile()
     if (path.isEmpty())
         return;
 
+    auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(index));
+    if (!editor || !editor->document()->isModified())
+        return;
+
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return;
 
     QTextStream out(&file);
-    out << currentEditor()->toPlainText();
+    out << editor->toPlainText();
+    editor->document()->setModified(false);
+}
+
+void MainWindow::saveAll()
+{
+    for (int i = 0; i < m_tabWidget->count(); ++i)
+        saveTab(i);
+}
+
+void MainWindow::onEditorModified()
+{
+    m_autoSaveTimer->start();
 }
 
 void MainWindow::onTabChanged(int index)
 {
+    // Save all before switching
+    saveAll();
+
     if (index < 0) {
         setWindowTitle("sild");
         m_searchBar->setEditor(nullptr);
@@ -132,6 +162,13 @@ void MainWindow::onTabChanged(int index)
     }
     setWindowTitle("sild - " + m_tabWidget->tabText(index));
     m_searchBar->setEditor(currentEditor());
+}
+
+bool MainWindow::event(QEvent *event)
+{
+    if (event->type() == QEvent::WindowDeactivate)
+        saveAll();
+    return QMainWindow::event(event);
 }
 
 void MainWindow::showSearch()
@@ -145,6 +182,7 @@ void MainWindow::showSearch()
 
 void MainWindow::closeTab(int index)
 {
+    saveTab(index);
     QString path = tabFilePath(index);
     m_openFiles.remove(path);
 
@@ -208,6 +246,8 @@ void MainWindow::loadFile(const QString &path, int line)
     auto *editor = new CodeEditor;
     editor->setPlainText(content);
     editor->setProperty("filePath", path);
+    editor->document()->setModified(false);
+    connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
 
     QString suffix = QFileInfo(path).suffix();
     if (suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
