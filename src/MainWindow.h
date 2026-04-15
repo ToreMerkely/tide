@@ -5,7 +5,7 @@
 #include <QMap>
 
 class QTreeView;
-class QPlainTextEdit;
+class CodeEditor;
 class QFileSystemModel;
 class QTabWidget;
 
@@ -24,7 +24,7 @@ private slots:
 
 private:
     void loadFile(const QString &path);
-    QPlainTextEdit *currentEditor() const;
+    CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
 
     QTreeView *m_treeView;

@@ -3,7 +3,7 @@
 #include <QApplication>
 #include <QSplitter>
 #include <QTreeView>
-#include <QPlainTextEdit>
+#include "CodeEditor.h"
 #include <QFileSystemModel>
 #include <QDir>
 #include <QFile>
@@ -137,7 +137,7 @@ void MainWindow::loadFile(const QString &path)
 
     QTextStream in(&file);
 
-    auto *editor = new QPlainTextEdit;
+    auto *editor = new CodeEditor;
     editor->setPlainText(in.readAll());
     editor->setProperty("filePath", path);
 
@@ -147,9 +147,9 @@ void MainWindow::loadFile(const QString &path)
     m_tabWidget->setCurrentIndex(index);
 }
 
-QPlainTextEdit *MainWindow::currentEditor() const
+CodeEditor *MainWindow::currentEditor() const
 {
-    return qobject_cast<QPlainTextEdit *>(m_tabWidget->currentWidget());
+    return qobject_cast<CodeEditor *>(m_tabWidget->currentWidget());
 }
 
 QString MainWindow::tabFilePath(int index) const

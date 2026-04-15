@@ -11,6 +11,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets)
 add_executable(sild
     src/main.cpp
     src/MainWindow.cpp
+    src/CodeEditor.cpp
 )
 
 target_link_libraries(sild PRIVATE Qt6::Widgets)
