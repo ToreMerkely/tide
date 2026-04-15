@@ -11,6 +11,8 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QTabWidget>
+#include <QTabBar>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -35,16 +37,18 @@ MainWindow::MainWindow(QWidget *parent)
     m_treeView->hideColumn(3); // date modified
     m_treeView->header()->hide();
 
-    m_editor = new QPlainTextEdit;
+    m_tabWidget = new QTabWidget;
+    m_tabWidget->setTabsClosable(true);
 
     auto *splitter = new QSplitter;
     splitter->addWidget(m_treeView);
-    splitter->addWidget(m_editor);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 3);
+    splitter->addWidget(m_tabWidget);
+    splitter->setSizes({200, 824});
     setCentralWidget(splitter);
 
-    connect(m_treeView, &QTreeView::clicked, this, &MainWindow::openFile);
+    connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
+    connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
+    connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
 }
 
 void MainWindow::openFile(const QModelIndex &index)
@@ -64,25 +68,79 @@ void MainWindow::openFileDialog()
 
 void MainWindow::saveFile()
 {
-    if (m_currentFilePath.isEmpty())
+    int index = m_tabWidget->currentIndex();
+    if (index < 0)
         return;
 
-    QFile file(m_currentFilePath);
+    QString path = tabFilePath(index);
+    if (path.isEmpty())
+        return;
+
+    QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return;
 
     QTextStream out(&file);
-    out << m_editor->toPlainText();
+    out << currentEditor()->toPlainText();
+}
+
+void MainWindow::onTabChanged(int index)
+{
+    if (index < 0) {
+        setWindowTitle("sild");
+        return;
+    }
+    setWindowTitle("sild - " + m_tabWidget->tabText(index));
+}
+
+void MainWindow::closeTab(int index)
+{
+    QString path = tabFilePath(index);
+    m_openFiles.remove(path);
+
+    QWidget *widget = m_tabWidget->widget(index);
+    m_tabWidget->removeTab(index);
+    delete widget;
+
+    // Rebuild index map since tab indices shift after removal
+    m_openFiles.clear();
+    for (int i = 0; i < m_tabWidget->count(); ++i)
+        m_openFiles[tabFilePath(i)] = i;
 }
 
 void MainWindow::loadFile(const QString &path)
 {
+    // If already open, switch to that tab
+    if (m_openFiles.contains(path)) {
+        m_tabWidget->setCurrentIndex(m_openFiles[path]);
+        return;
+    }
+
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
 
     QTextStream in(&file);
-    m_editor->setPlainText(in.readAll());
-    m_currentFilePath = path;
-    setWindowTitle("sild - " + QFileInfo(path).fileName());
+
+    auto *editor = new QPlainTextEdit;
+    editor->setPlainText(in.readAll());
+    editor->setProperty("filePath", path);
+
+    QString name = QFileInfo(path).fileName();
+    int index = m_tabWidget->addTab(editor, name);
+    m_openFiles[path] = index;
+    m_tabWidget->setCurrentIndex(index);
+}
+
+QPlainTextEdit *MainWindow::currentEditor() const
+{
+    return qobject_cast<QPlainTextEdit *>(m_tabWidget->currentWidget());
+}
+
+QString MainWindow::tabFilePath(int index) const
+{
+    QWidget *widget = m_tabWidget->widget(index);
+    if (!widget)
+        return {};
+    return widget->property("filePath").toString();
 }
