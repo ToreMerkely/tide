@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "CppHighlighter.h"
 #include "LspClient.h"
+#include "SearchBar.h"
 #include <QMenuBar>
 #include <QApplication>
 #include <QSplitter>
@@ -17,6 +18,7 @@
 #include <QTabBar>
 #include <QShortcut>
 #include <QTextBlock>
+#include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -44,9 +46,18 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabWidget = new QTabWidget;
     m_tabWidget->setTabsClosable(true);
 
+    m_searchBar = new SearchBar;
+
+    auto *rightPane = new QWidget;
+    auto *rightLayout = new QVBoxLayout(rightPane);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(0);
+    rightLayout->addWidget(m_searchBar);
+    rightLayout->addWidget(m_tabWidget);
+
     auto *splitter = new QSplitter;
     splitter->addWidget(m_treeView);
-    splitter->addWidget(m_tabWidget);
+    splitter->addWidget(rightPane);
     splitter->setSizes({200, 824});
     setCentralWidget(splitter);
 
@@ -70,6 +81,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *gotoDef = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_B), this);
     connect(gotoDef, &QShortcut::activated, this, &MainWindow::gotoDefinition);
+
+    auto *findShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
+    connect(findShortcut, &QShortcut::activated, this, &MainWindow::showSearch);
 
     // Start LSP
     m_lsp = new LspClient(QDir::currentPath(), this);
@@ -113,9 +127,20 @@ void MainWindow::onTabChanged(int index)
 {
     if (index < 0) {
         setWindowTitle("sild");
+        m_searchBar->setEditor(nullptr);
         return;
     }
     setWindowTitle("sild - " + m_tabWidget->tabText(index));
+    m_searchBar->setEditor(currentEditor());
+}
+
+void MainWindow::showSearch()
+{
+    auto *editor = currentEditor();
+    if (!editor)
+        return;
+    m_searchBar->setEditor(editor);
+    m_searchBar->activate();
 }
 
 void MainWindow::closeTab(int index)

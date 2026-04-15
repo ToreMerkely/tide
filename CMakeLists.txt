@@ -15,6 +15,7 @@ add_executable(sild
     src/CodeEditor.cpp
     src/CppHighlighter.cpp
     src/LspClient.cpp
+    src/SearchBar.cpp
 )
 
 target_link_libraries(sild PRIVATE Qt6::Widgets)
