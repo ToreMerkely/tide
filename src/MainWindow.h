@@ -8,6 +8,7 @@ class QTreeView;
 class CodeEditor;
 class QFileSystemModel;
 class QTabWidget;
+class LspClient;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -21,9 +22,10 @@ private slots:
     void saveFile();
     void onTabChanged(int index);
     void closeTab(int index);
+    void gotoDefinition();
 
 private:
-    void loadFile(const QString &path);
+    void loadFile(const QString &path, int line = -1);
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
 
@@ -31,6 +33,7 @@ private:
     QTabWidget *m_tabWidget;
     QFileSystemModel *m_fileModel;
     QMap<QString, int> m_openFiles; // path -> tab index
+    LspClient *m_lsp;
 };
 
 #endif

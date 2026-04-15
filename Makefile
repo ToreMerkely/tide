@@ -5,6 +5,7 @@ BUILD_DIR := build
 build:
 	@cmake -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
 	@cmake --build $(BUILD_DIR)
+	@ln -sf $(BUILD_DIR)/compile_commands.json compile_commands.json
 
 run: build
 	@./$(BUILD_DIR)/sild

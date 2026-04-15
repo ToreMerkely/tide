@@ -3,7 +3,7 @@
 CppHighlighter::CppHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
-    // Keywords (orange, like Darcula)
+    // Keywords (orange)
     QTextCharFormat keywordFormat;
     keywordFormat.setForeground(QColor(0xCC, 0x78, 0x32));
     keywordFormat.setFontWeight(QFont::Bold);
@@ -22,7 +22,7 @@ CppHighlighter::CppHighlighter(QTextDocument *parent)
         "or", "or_eq", "private", "protected", "public", "register",
         "reinterpret_cast", "requires", "return", "short", "signed",
         "sizeof", "static", "static_assert", "static_cast", "struct",
-        "switch", "template", "this", "thread_local", "throw",
+        "switch", "template", "thread_local", "throw",
         "true", "try", "typedef", "typeid", "typename", "union",
         "unsigned", "using", "virtual", "void", "volatile",
         "wchar_t", "while", "xor", "xor_eq", "override", "final"
@@ -35,12 +35,37 @@ CppHighlighter::CppHighlighter(QTextDocument *parent)
         });
     }
 
-    // Preprocessor directives (yellow-green)
+    // "this" keyword (purple, italic)
+    QTextCharFormat thisFormat;
+    thisFormat.setForeground(QColor(0x98, 0x76, 0xAA));
+    thisFormat.setFontItalic(true);
+    m_rules.append({
+        QRegularExpression("\\bthis\\b"),
+        thisFormat
+    });
+
+    // Preprocessor directives (olive/green)
     QTextCharFormat preprocessorFormat;
     preprocessorFormat.setForeground(QColor(0xBB, 0xB5, 0x29));
     m_rules.append({
         QRegularExpression("^\\s*#\\s*\\w+"),
         preprocessorFormat
+    });
+
+    // Preprocessor macros / all-caps constants (purple)
+    QTextCharFormat macroFormat;
+    macroFormat.setForeground(QColor(0x98, 0x76, 0xAA));
+    m_rules.append({
+        QRegularExpression("\\b[A-Z][A-Z0-9_]{2,}\\b"),
+        macroFormat
+    });
+
+    // Types — uppercase-starting identifiers (lavender/purple)
+    QTextCharFormat typeFormat;
+    typeFormat.setForeground(QColor(0xB3, 0x89, 0xC5));
+    m_rules.append({
+        QRegularExpression("\\b[A-Z][A-Za-z0-9_]*[a-z][A-Za-z0-9_]*\\b"),
+        typeFormat
     });
 
     // Strings (green)
@@ -75,19 +100,23 @@ CppHighlighter::CppHighlighter(QTextDocument *parent)
         numberFormat
     });
 
-    // Function calls (yellow)
+    // Function calls/declarations (yellow)
     QTextCharFormat functionFormat;
-    functionFormat.setForeground(QColor(0xFC, 0xC6, 0x24));
+    functionFormat.setForeground(QColor(0xFF, 0xC6, 0x6D));
     m_rules.append({
         QRegularExpression("\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"),
         functionFormat
     });
 
-    // Types (starting with uppercase, common convention)
-    QTextCharFormat typeFormat;
-    typeFormat.setForeground(QColor(0xA9, 0xB7, 0xC6));
+    // Member access (after . or ->)
+    QTextCharFormat memberFormat;
+    memberFormat.setForeground(QColor(0x98, 0x76, 0xAA));
+    m_rules.append({
+        QRegularExpression("(?<=\\.|->)[A-Za-z_][A-Za-z0-9_]*"),
+        memberFormat
+    });
 
-    // Single-line comments (grey)
+    // Single-line comments (grey, italic)
     QTextCharFormat commentFormat;
     commentFormat.setForeground(QColor(0x80, 0x80, 0x80));
     commentFormat.setFontItalic(true);

@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "CppHighlighter.h"
+#include "LspClient.h"
 #include <QMenuBar>
 #include <QApplication>
 #include <QSplitter>
@@ -15,6 +16,7 @@
 #include <QTabWidget>
 #include <QTabBar>
 #include <QShortcut>
+#include <QTextBlock>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -65,6 +67,13 @@ MainWindow::MainWindow(QWidget *parent)
         if (count > 1)
             m_tabWidget->setCurrentIndex((m_tabWidget->currentIndex() + 1) % count);
     });
+
+    auto *gotoDef = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_B), this);
+    connect(gotoDef, &QShortcut::activated, this, &MainWindow::gotoDefinition);
+
+    // Start LSP
+    m_lsp = new LspClient(QDir::currentPath(), this);
+    m_lsp->start();
 }
 
 void MainWindow::openFile(const QModelIndex &index)
@@ -124,11 +133,43 @@ void MainWindow::closeTab(int index)
         m_openFiles[tabFilePath(i)] = i;
 }
 
-void MainWindow::loadFile(const QString &path)
+void MainWindow::gotoDefinition()
+{
+    auto *editor = currentEditor();
+    if (!editor)
+        return;
+
+    QString path = tabFilePath(m_tabWidget->currentIndex());
+    if (path.isEmpty())
+        return;
+
+    QTextCursor cursor = editor->textCursor();
+    int line = cursor.blockNumber();
+    int column = cursor.columnNumber();
+
+    // Send current content to clangd so it has the latest
+    m_lsp->didChange(path, editor->toPlainText());
+
+    m_lsp->gotoDefinition(path, line, column, [this](const QVector<LspLocation> &locations) {
+        if (locations.isEmpty())
+            return;
+        const LspLocation &loc = locations.first();
+        loadFile(loc.filePath, loc.line);
+    });
+}
+
+void MainWindow::loadFile(const QString &path, int line)
 {
     // If already open, switch to that tab
     if (m_openFiles.contains(path)) {
         m_tabWidget->setCurrentIndex(m_openFiles[path]);
+        if (line >= 0) {
+            auto *editor = currentEditor();
+            QTextBlock block = editor->document()->findBlockByNumber(line);
+            QTextCursor cursor(block);
+            editor->setTextCursor(cursor);
+            editor->centerCursor();
+        }
         return;
     }
 
@@ -137,20 +178,30 @@ void MainWindow::loadFile(const QString &path)
         return;
 
     QTextStream in(&file);
+    QString content = in.readAll();
 
     auto *editor = new CodeEditor;
-    editor->setPlainText(in.readAll());
+    editor->setPlainText(content);
     editor->setProperty("filePath", path);
 
     QString suffix = QFileInfo(path).suffix();
     if (suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
-        suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c")
+        suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c") {
         new CppHighlighter(editor->document());
+        m_lsp->didOpen(path, content);
+    }
 
     QString name = QFileInfo(path).fileName();
     int index = m_tabWidget->addTab(editor, name);
     m_openFiles[path] = index;
     m_tabWidget->setCurrentIndex(index);
+
+    if (line >= 0) {
+        QTextBlock block = editor->document()->findBlockByNumber(line);
+        QTextCursor cursor(block);
+        editor->setTextCursor(cursor);
+        editor->centerCursor();
+    }
 }
 
 CodeEditor *MainWindow::currentEditor() const
