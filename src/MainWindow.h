@@ -35,6 +35,9 @@ private:
     void saveTab(int index);
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
+    LspClient *lspForFile(const QString &path) const;
+    static bool isCppFile(const QString &suffix);
+    static bool isPythonFile(const QString &suffix);
 
     bool event(QEvent *event) override;
 
@@ -42,7 +45,8 @@ private:
     QTabWidget *m_tabWidget;
     QFileSystemModel *m_fileModel;
     QMap<QString, int> m_openFiles; // path -> tab index
-    LspClient *m_lsp;
+    LspClient *m_cppLsp;
+    LspClient *m_pyLsp;
     SearchBar *m_searchBar;
     QTimer *m_autoSaveTimer;
 };

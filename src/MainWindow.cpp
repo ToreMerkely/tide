@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "CppHighlighter.h"
+#include "PythonHighlighter.h"
 #include "LspClient.h"
 #include "SearchBar.h"
 #include <QMenuBar>
@@ -20,6 +21,24 @@
 #include <QTextBlock>
 #include <QVBoxLayout>
 #include <QTimer>
+
+static QString findPylsp(const QString &rootPath)
+{
+    // Look in .venv first
+    QString venvPath = rootPath + "/.venv/bin/pylsp";
+    if (QFile::exists(venvPath))
+        return venvPath;
+
+    // Try common venv names
+    for (const QString &dir : {"venv", ".env", "env"}) {
+        QString path = rootPath + "/" + dir + "/bin/pylsp";
+        if (QFile::exists(path))
+            return path;
+    }
+
+    // Fall back to system
+    return "pylsp";
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -86,9 +105,14 @@ MainWindow::MainWindow(QWidget *parent)
     auto *findShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
     connect(findShortcut, &QShortcut::activated, this, &MainWindow::showSearch);
 
-    // Start LSP
-    m_lsp = new LspClient(QDir::currentPath(), this);
-    m_lsp->start();
+    // Start LSP servers
+    QString root = QDir::currentPath();
+
+    m_cppLsp = new LspClient("clangd", {"--compile-commands-dir=" + root}, root, this);
+    m_cppLsp->start();
+
+    m_pyLsp = new LspClient(findPylsp(root), {}, root, this);
+    m_pyLsp->start();
 
     // Auto-save on idle
     m_autoSaveTimer = new QTimer(this);
@@ -206,14 +230,17 @@ void MainWindow::gotoDefinition()
     if (path.isEmpty())
         return;
 
+    LspClient *lsp = lspForFile(path);
+    if (!lsp || !lsp->isRunning())
+        return;
+
     QTextCursor cursor = editor->textCursor();
     int line = cursor.blockNumber();
     int column = cursor.columnNumber();
 
-    // Send current content to clangd so it has the latest
-    m_lsp->didChange(path, editor->toPlainText());
+    lsp->didChange(path, editor->toPlainText());
 
-    m_lsp->gotoDefinition(path, line, column, [this](const QVector<LspLocation> &locations) {
+    lsp->gotoDefinition(path, line, column, [this](const QVector<LspLocation> &locations) {
         if (locations.isEmpty())
             return;
         const LspLocation &loc = locations.first();
@@ -250,10 +277,12 @@ void MainWindow::loadFile(const QString &path, int line)
     connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
 
     QString suffix = QFileInfo(path).suffix();
-    if (suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
-        suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c") {
+    if (isCppFile(suffix)) {
         new CppHighlighter(editor->document());
-        m_lsp->didOpen(path, content);
+        m_cppLsp->didOpen(path, content, "cpp");
+    } else if (isPythonFile(suffix)) {
+        new PythonHighlighter(editor->document());
+        m_pyLsp->didOpen(path, content, "python");
     }
 
     QString name = QFileInfo(path).fileName();
@@ -280,4 +309,25 @@ QString MainWindow::tabFilePath(int index) const
     if (!widget)
         return {};
     return widget->property("filePath").toString();
+}
+
+LspClient *MainWindow::lspForFile(const QString &path) const
+{
+    QString suffix = QFileInfo(path).suffix();
+    if (isCppFile(suffix))
+        return m_cppLsp;
+    if (isPythonFile(suffix))
+        return m_pyLsp;
+    return nullptr;
+}
+
+bool MainWindow::isCppFile(const QString &suffix)
+{
+    return suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
+           suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c";
+}
+
+bool MainWindow::isPythonFile(const QString &suffix)
+{
+    return suffix == "py" || suffix == "pyw" || suffix == "pyi";
 }

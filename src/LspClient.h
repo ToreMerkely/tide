@@ -16,11 +16,13 @@ class LspClient : public QObject {
     Q_OBJECT
 
 public:
-    explicit LspClient(const QString &rootPath, QObject *parent = nullptr);
+    LspClient(const QString &command, const QStringList &args,
+              const QString &rootPath, QObject *parent = nullptr);
     ~LspClient();
 
     void start();
-    void didOpen(const QString &filePath, const QString &content);
+    bool isRunning() const;
+    void didOpen(const QString &filePath, const QString &content, const QString &languageId);
     void didChange(const QString &filePath, const QString &content);
     void gotoDefinition(const QString &filePath, int line, int column,
                         std::function<void(const QVector<LspLocation> &)> callback);
@@ -39,6 +41,8 @@ private:
     void handleMessage(const QJsonObject &msg);
 
     QProcess *m_process;
+    QString m_command;
+    QStringList m_args;
     QString m_rootPath;
     int m_nextId = 1;
     QByteArray m_buffer;

@@ -16,6 +16,7 @@ add_executable(sild
     src/CppHighlighter.cpp
     src/LspClient.cpp
     src/SearchBar.cpp
+    src/PythonHighlighter.cpp
 )
 
 target_link_libraries(sild PRIVATE Qt6::Widgets)

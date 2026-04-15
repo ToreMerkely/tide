@@ -4,9 +4,12 @@
 #include <QJsonArray>
 #include <QUrl>
 
-LspClient::LspClient(const QString &rootPath, QObject *parent)
+LspClient::LspClient(const QString &command, const QStringList &args,
+                     const QString &rootPath, QObject *parent)
     : QObject(parent)
     , m_process(new QProcess(this))
+    , m_command(command)
+    , m_args(args)
     , m_rootPath(rootPath)
 {
     connect(m_process, &QProcess::readyReadStandardOutput, this, &LspClient::onReadyRead);
@@ -22,8 +25,9 @@ LspClient::~LspClient()
 
 void LspClient::start()
 {
-    m_process->start("clangd", {"--compile-commands-dir=" + m_rootPath});
-    m_process->waitForStarted();
+    m_process->start(m_command, m_args);
+    if (!m_process->waitForStarted(3000))
+        return;
 
     QJsonObject caps;
     caps["textDocument"] = QJsonObject{
@@ -41,11 +45,19 @@ void LspClient::start()
     });
 }
 
-void LspClient::didOpen(const QString &filePath, const QString &content)
+bool LspClient::isRunning() const
 {
+    return m_process->state() == QProcess::Running;
+}
+
+void LspClient::didOpen(const QString &filePath, const QString &content, const QString &languageId)
+{
+    if (!isRunning())
+        return;
+
     QJsonObject textDoc;
     textDoc["uri"] = QUrl::fromLocalFile(filePath).toString();
-    textDoc["languageId"] = "cpp";
+    textDoc["languageId"] = languageId;
     textDoc["version"] = 1;
     textDoc["text"] = content;
 
@@ -54,6 +66,9 @@ void LspClient::didOpen(const QString &filePath, const QString &content)
 
 void LspClient::didChange(const QString &filePath, const QString &content)
 {
+    if (!isRunning())
+        return;
+
     QJsonObject textDoc;
     textDoc["uri"] = QUrl::fromLocalFile(filePath).toString();
     textDoc["version"] = 2;
@@ -71,6 +86,12 @@ void LspClient::didChange(const QString &filePath, const QString &content)
 void LspClient::gotoDefinition(const QString &filePath, int line, int column,
                                 std::function<void(const QVector<LspLocation> &)> callback)
 {
+    if (!isRunning()) {
+        if (callback)
+            callback({});
+        return;
+    }
+
     QJsonObject params;
     params["textDocument"] = QJsonObject{
         {"uri", QUrl::fromLocalFile(filePath).toString()}
