@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QTabWidget>
 #include <QTabBar>
+#include <QShortcut>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -49,6 +50,20 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
+
+    auto *prevTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp), this);
+    connect(prevTab, &QShortcut::activated, this, [this]() {
+        int count = m_tabWidget->count();
+        if (count > 1)
+            m_tabWidget->setCurrentIndex((m_tabWidget->currentIndex() - 1 + count) % count);
+    });
+
+    auto *nextTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageDown), this);
+    connect(nextTab, &QShortcut::activated, this, [this]() {
+        int count = m_tabWidget->count();
+        if (count > 1)
+            m_tabWidget->setCurrentIndex((m_tabWidget->currentIndex() + 1) % count);
+    });
 }
 
 void MainWindow::openFile(const QModelIndex &index)
