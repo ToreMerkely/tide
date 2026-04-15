@@ -12,6 +12,7 @@ add_executable(sild
     src/main.cpp
     src/MainWindow.cpp
     src/CodeEditor.cpp
+    src/CppHighlighter.cpp
 )
 
 target_link_libraries(sild PRIVATE Qt6::Widgets)

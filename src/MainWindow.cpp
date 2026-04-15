@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "CppHighlighter.h"
 #include <QMenuBar>
 #include <QApplication>
 #include <QSplitter>
@@ -140,6 +141,11 @@ void MainWindow::loadFile(const QString &path)
     auto *editor = new CodeEditor;
     editor->setPlainText(in.readAll());
     editor->setProperty("filePath", path);
+
+    QString suffix = QFileInfo(path).suffix();
+    if (suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
+        suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c")
+        new CppHighlighter(editor->document());
 
     QString name = QFileInfo(path).fileName();
     int index = m_tabWidget->addTab(editor, name);
