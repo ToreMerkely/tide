@@ -1,6 +1,7 @@
 #include "CodeEditor.h"
 #include <QKeyEvent>
 #include <QTextCursor>
+#include <QFont>
 
 static const int INDENT_WIDTH = 4;
 static const QString INDENT_STR = QString(INDENT_WIDTH, ' ');
@@ -8,6 +9,9 @@ static const QString INDENT_STR = QString(INDENT_WIDTH, ' ');
 CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
+    QFont font("JetBrains Mono", 11);
+    font.setStyleHint(QFont::Monospace);
+    setFont(font);
     setTabStopDistance(fontMetrics().horizontalAdvance(' ') * INDENT_WIDTH);
 }
 
