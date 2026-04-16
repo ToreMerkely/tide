@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include <QStack>
 
 class QTimer;
 class QLabel;
@@ -28,12 +29,21 @@ private slots:
     void onTabChanged(int index);
     void closeTab(int index);
     void gotoDefinition();
+    void navigateBack();
+    void navigateForward();
     void showSearch();
     void saveAll();
     void onEditorModified();
 
 private:
+    struct NavLocation {
+        QString filePath;
+        int line;
+    };
+
     void loadFile(const QString &path, int line = -1);
+    void navigateTo(const QString &path, int line);
+    void pushCurrentLocation();
     void saveTab(int index);
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
@@ -55,6 +65,9 @@ private:
     QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;
     Settings *m_settings;
+    QStack<NavLocation> m_backStack;
+    QStack<NavLocation> m_forwardStack;
+    bool m_navigating = false;
     bool m_pyLspPromptShown = false;
 };
 

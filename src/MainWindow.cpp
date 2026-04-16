@@ -130,6 +130,41 @@ MainWindow::MainWindow(QWidget *parent)
     auto *gotoDef = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_B), this);
     connect(gotoDef, &QShortcut::activated, this, &MainWindow::gotoDefinition);
 
+    auto *navBack = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), this);
+    connect(navBack, &QShortcut::activated, this, &MainWindow::navigateBack);
+
+    auto *navForward = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), this);
+    connect(navForward, &QShortcut::activated, this, &MainWindow::navigateForward);
+
+    auto *closeTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_W), this);
+    connect(closeTabShortcut, &QShortcut::activated, this, [this]() {
+        int index = m_tabWidget->currentIndex();
+        if (index >= 0)
+            closeTab(index);
+    });
+
+    auto *moveTabLeft = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_PageUp), this);
+    connect(moveTabLeft, &QShortcut::activated, this, [this]() {
+        int index = m_tabWidget->currentIndex();
+        if (index > 0) {
+            m_tabWidget->tabBar()->moveTab(index, index - 1);
+            m_openFiles.clear();
+            for (int i = 0; i < m_tabWidget->count(); ++i)
+                m_openFiles[tabFilePath(i)] = i;
+        }
+    });
+
+    auto *moveTabRight = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_PageDown), this);
+    connect(moveTabRight, &QShortcut::activated, this, [this]() {
+        int index = m_tabWidget->currentIndex();
+        if (index >= 0 && index < m_tabWidget->count() - 1) {
+            m_tabWidget->tabBar()->moveTab(index, index + 1);
+            m_openFiles.clear();
+            for (int i = 0; i < m_tabWidget->count(); ++i)
+                m_openFiles[tabFilePath(i)] = i;
+        }
+    });
+
     auto *findShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
     connect(findShortcut, &QShortcut::activated, this, &MainWindow::showSearch);
 
@@ -276,9 +311,57 @@ void MainWindow::gotoDefinition()
     lsp->gotoDefinition(path, line, column, [this](const QVector<LspLocation> &locations) {
         if (locations.isEmpty())
             return;
+        pushCurrentLocation();
+        m_forwardStack.clear();
         const LspLocation &loc = locations.first();
-        loadFile(loc.filePath, loc.line);
+        navigateTo(loc.filePath, loc.line);
     });
+}
+
+void MainWindow::pushCurrentLocation()
+{
+    auto *editor = currentEditor();
+    if (!editor)
+        return;
+    QString path = tabFilePath(m_tabWidget->currentIndex());
+    if (path.isEmpty())
+        return;
+    m_backStack.push({path, editor->textCursor().blockNumber()});
+}
+
+void MainWindow::navigateTo(const QString &path, int line)
+{
+    m_navigating = true;
+    loadFile(path, line);
+    m_navigating = false;
+}
+
+void MainWindow::navigateBack()
+{
+    if (m_backStack.isEmpty())
+        return;
+
+    auto *editor = currentEditor();
+    QString curPath = tabFilePath(m_tabWidget->currentIndex());
+    int curLine = editor ? editor->textCursor().blockNumber() : 0;
+    m_forwardStack.push({curPath, curLine});
+
+    NavLocation loc = m_backStack.pop();
+    navigateTo(loc.filePath, loc.line);
+}
+
+void MainWindow::navigateForward()
+{
+    if (m_forwardStack.isEmpty())
+        return;
+
+    auto *editor = currentEditor();
+    QString curPath = tabFilePath(m_tabWidget->currentIndex());
+    int curLine = editor ? editor->textCursor().blockNumber() : 0;
+    m_backStack.push({curPath, curLine});
+
+    NavLocation loc = m_forwardStack.pop();
+    navigateTo(loc.filePath, loc.line);
 }
 
 void MainWindow::loadFile(const QString &path, int line)
