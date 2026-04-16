@@ -38,6 +38,7 @@ private:
     QString tabFilePath(int index) const;
     LspClient *lspForFile(const QString &path) const;
     void ensurePythonLsp();
+    void requestSemanticHighlight(const QString &path, CodeEditor *editor);
     static bool isCppFile(const QString &suffix);
     static bool isPythonFile(const QString &suffix);
 

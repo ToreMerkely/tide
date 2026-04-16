@@ -20,6 +20,7 @@
 #include <QTabBar>
 #include <QShortcut>
 #include <QTextBlock>
+#include <QTextEdit>
 #include <QVBoxLayout>
 #include <QTimer>
 #include <QMessageBox>
@@ -27,33 +28,33 @@
 #include <QProcess>
 #include <QProgressDialog>
 
-static QString findPylsp(const QString &rootPath, Settings *settings)
+static QString findPyright(const QString &rootPath, Settings *settings)
 {
     // Check saved setting first
     QString saved = settings->value("python_venv_path");
     if (!saved.isEmpty()) {
-        QString path = saved + "/bin/pylsp";
+        QString path = saved + "/bin/pyright-langserver";
         if (QFile::exists(path))
             return path;
     }
 
     // Look in .venv
-    QString venvPath = rootPath + "/.venv/bin/pylsp";
+    QString venvPath = rootPath + "/.venv/bin/pyright-langserver";
     if (QFile::exists(venvPath))
         return venvPath;
 
     // Try common venv names
     for (const QString &dir : {"venv", ".env", "env"}) {
-        QString path = rootPath + "/" + dir + "/bin/pylsp";
+        QString path = rootPath + "/" + dir + "/bin/pyright-langserver";
         if (QFile::exists(path))
             return path;
     }
 
     // Check system PATH
     QProcess which;
-    which.start("which", {"pylsp"});
+    which.start("which", {"pyright-langserver"});
     if (which.waitForFinished(2000) && which.exitCode() == 0)
-        return "pylsp";
+        return "pyright-langserver";
 
     return {};
 }
@@ -331,6 +332,75 @@ QString MainWindow::tabFilePath(int index) const
     return widget->property("filePath").toString();
 }
 
+void MainWindow::requestSemanticHighlight(const QString &path, CodeEditor *editor)
+{
+    LspClient *lsp = lspForFile(path);
+    if (!lsp || !lsp->isRunning())
+        return;
+
+    lsp->requestSemanticTokens(path, [editor](const QVector<SemanticToken> &tokens) {
+        if (!editor)
+            return;
+
+        // Map token types to Darcula colors
+        static const QMap<QString, QColor> colorMap = {
+            {"keyword",       QColor(0xCC, 0x78, 0x32)},
+            {"type",          QColor(0xB3, 0x89, 0xC5)},
+            {"class",         QColor(0xB3, 0x89, 0xC5)},
+            {"enum",          QColor(0xB3, 0x89, 0xC5)},
+            {"interface",     QColor(0xB3, 0x89, 0xC5)},
+            {"struct",        QColor(0xB3, 0x89, 0xC5)},
+            {"typeParameter", QColor(0xB3, 0x89, 0xC5)},
+            {"parameter",     QColor(0xA9, 0xB7, 0xC6)},
+            {"variable",      QColor(0xA9, 0xB7, 0xC6)},
+            {"property",      QColor(0x98, 0x76, 0xAA)},
+            {"function",      QColor(0xFF, 0xC6, 0x6D)},
+            {"method",        QColor(0xFF, 0xC6, 0x6D)},
+            {"macro",         QColor(0x98, 0x76, 0xAA)},
+            {"namespace",     QColor(0xA9, 0xB7, 0xC6)},
+            {"comment",       QColor(0x80, 0x80, 0x80)},
+            {"string",        QColor(0x6A, 0x87, 0x59)},
+            {"number",        QColor(0x68, 0x97, 0xBB)},
+            {"operator",      QColor(0xA9, 0xB7, 0xC6)},
+            {"decorator",     QColor(0xBB, 0xB5, 0x29)},
+            {"enumMember",    QColor(0x98, 0x76, 0xAA)},
+        };
+
+        QTextDocument *doc = editor->document();
+        QList<QTextEdit::ExtraSelection> selections;
+
+        for (const SemanticToken &tok : tokens) {
+            auto it = colorMap.find(tok.tokenType);
+            if (it == colorMap.end())
+                continue;
+
+            QTextBlock block = doc->findBlockByNumber(tok.line);
+            if (!block.isValid())
+                continue;
+
+            QTextCursor cursor(block);
+            cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, tok.column);
+            cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, tok.length);
+
+            QTextEdit::ExtraSelection sel;
+            sel.cursor = cursor;
+            sel.format.setForeground(it.value());
+
+            // Bold for keywords
+            if (tok.tokenType == "keyword")
+                sel.format.setFontWeight(QFont::Bold);
+
+            // Italic for self/cls parameters with defaultLibrary modifier
+            if (tok.modifiers.contains("defaultLibrary"))
+                sel.format.setFontItalic(true);
+
+            selections.append(sel);
+        }
+
+        editor->setExtraSelections(selections);
+    });
+}
+
 void MainWindow::ensurePythonLsp()
 {
     if (m_pyLsp && m_pyLsp->isRunning())
@@ -339,18 +409,18 @@ void MainWindow::ensurePythonLsp()
         return;
 
     QString root = QDir::currentPath();
-    QString pylsp = findPylsp(root, m_settings);
+    QString pyright = findPyright(root, m_settings);
 
-    if (!pylsp.isEmpty()) {
-        m_pyLsp = new LspClient(pylsp, {}, root, this);
+    if (!pyright.isEmpty()) {
+        m_pyLsp = new LspClient(pyright, {"--stdio"}, root, this);
         m_pyLsp->start();
         return;
     }
 
     QMessageBox msgBox(this);
     msgBox.setWindowTitle("Python Language Server");
-    msgBox.setText("No Python language server (pylsp) was found.\n\n"
-                   "You can create a new .venv with pylsp installed,\n"
+    msgBox.setText("No Python language server (pyright) was found.\n\n"
+                   "You can create a new .venv with pyright installed,\n"
                    "browse for an existing virtual environment, or\n"
                    "skip to use syntax highlighting only.");
     msgBox.setMinimumWidth(500);
@@ -389,15 +459,15 @@ void MainWindow::ensurePythonLsp()
                     proc->deleteLater();
                     return;
                 }
-                proc->start(root + "/.venv/bin/pip", {"install", "python-lsp-server"});
+                proc->start(root + "/.venv/bin/pip", {"install", "pyright"});
 
             } else {
                 proc->deleteLater();
                 if (exitCode != 0)
                     return;
 
-                QString pylspPath = root + "/.venv/bin/pylsp";
-                m_pyLsp = new LspClient(pylspPath, {}, root, this);
+                QString pyrightPath = root + "/.venv/bin/pyright-langserver";
+                m_pyLsp = new LspClient(pyrightPath, {"--stdio"}, root, this);
                 m_pyLsp->start();
 
                 // Send didOpen for any already-open Python files
@@ -426,17 +496,17 @@ void MainWindow::ensurePythonLsp()
         if (dir.isEmpty())
             return;
 
-        QString path = dir + "/bin/pylsp";
+        QString path = dir + "/bin/pyright-langserver";
         if (!QFile::exists(path)) {
             QMessageBox::warning(this, "Not found",
-                "No pylsp found at:\n" + path + "\n\n"
-                "Make sure python-lsp-server is installed in that venv.");
+                "No pyright-langserver found at:\n" + path + "\n\n"
+                "Make sure pyright is installed in that venv.");
             return;
         }
 
         m_pyLspPromptShown = true;
         m_settings->setValue("python_venv_path", dir);
-        m_pyLsp = new LspClient(path, {}, root, this);
+        m_pyLsp = new LspClient(path, {"--stdio"}, root, this);
         m_pyLsp->start();
     }
 }

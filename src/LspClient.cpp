@@ -29,17 +29,55 @@ void LspClient::start()
     if (!m_process->waitForStarted(3000))
         return;
 
+    QJsonObject semanticTokensCaps;
+    semanticTokensCaps["dynamicRegistration"] = false;
+    semanticTokensCaps["requests"] = QJsonObject{
+        {"range", false},
+        {"full", QJsonObject{{"delta", false}}}
+    };
+    semanticTokensCaps["tokenTypes"] = QJsonArray::fromStringList({
+        "namespace", "type", "class", "enum", "interface",
+        "struct", "typeParameter", "parameter", "variable", "property",
+        "enumMember", "event", "function", "method", "macro",
+        "keyword", "modifier", "comment", "string", "number",
+        "regexp", "operator", "decorator"
+    });
+    semanticTokensCaps["tokenModifiers"] = QJsonArray::fromStringList({
+        "declaration", "definition", "readonly", "static",
+        "deprecated", "abstract", "async", "modification",
+        "documentation", "defaultLibrary"
+    });
+    semanticTokensCaps["formats"] = QJsonArray{"relative"};
+    semanticTokensCaps["overlappingTokenSupport"] = false;
+    semanticTokensCaps["multilineTokenSupport"] = false;
+
     QJsonObject caps;
     caps["textDocument"] = QJsonObject{
-        {"definition", QJsonObject{{"dynamicRegistration", false}}}
+        {"definition", QJsonObject{{"dynamicRegistration", false}}},
+        {"semanticTokens", semanticTokensCaps}
     };
+    caps["general"] = QJsonObject{};
 
     QJsonObject params;
     params["processId"] = (int)QCoreApplication::applicationPid();
     params["rootUri"] = QUrl::fromLocalFile(m_rootPath).toString();
     params["capabilities"] = caps;
 
-    sendRequest("initialize", params, [this](const QJsonObject &) {
+    sendRequest("initialize", params, [this](const QJsonObject &response) {
+        // Capture semantic token legend
+        QJsonObject result = response["result"].toObject();
+        QJsonObject serverCaps = result["capabilities"].toObject();
+        QJsonObject semTokens = serverCaps["semanticTokensProvider"].toObject();
+        QJsonObject legend = semTokens["legend"].toObject();
+
+        m_tokenTypes.clear();
+        for (const auto &v : legend["tokenTypes"].toArray())
+            m_tokenTypes.append(v.toString());
+
+        m_tokenModifiers.clear();
+        for (const auto &v : legend["tokenModifiers"].toArray())
+            m_tokenModifiers.append(v.toString());
+
         sendNotification("initialized", QJsonObject{});
         emit ready();
     });
@@ -122,6 +160,60 @@ void LspClient::gotoDefinition(const QString &filePath, int line, int column,
 
         if (callback)
             callback(locations);
+    });
+}
+
+void LspClient::requestSemanticTokens(const QString &filePath,
+                                       std::function<void(const QVector<SemanticToken> &)> callback)
+{
+    if (!isRunning() || m_tokenTypes.isEmpty()) {
+        if (callback)
+            callback({});
+        return;
+    }
+
+    QJsonObject params;
+    params["textDocument"] = QJsonObject{
+        {"uri", QUrl::fromLocalFile(filePath).toString()}
+    };
+
+    sendRequest("textDocument/semanticTokens/full", params,
+                [this, callback](const QJsonObject &response) {
+        QVector<SemanticToken> tokens;
+        QJsonArray data = response["result"].toObject()["data"].toArray();
+
+        int line = 0;
+        int col = 0;
+
+        for (int i = 0; i + 4 < data.size(); i += 5) {
+            int deltaLine = data[i].toInt();
+            int deltaStart = data[i + 1].toInt();
+            int length = data[i + 2].toInt();
+            int typeIndex = data[i + 3].toInt();
+            int modBits = data[i + 4].toInt();
+
+            if (deltaLine > 0) {
+                line += deltaLine;
+                col = deltaStart;
+            } else {
+                col += deltaStart;
+            }
+
+            QString type;
+            if (typeIndex >= 0 && typeIndex < m_tokenTypes.size())
+                type = m_tokenTypes[typeIndex];
+
+            QStringList mods;
+            for (int bit = 0; bit < m_tokenModifiers.size(); ++bit) {
+                if (modBits & (1 << bit))
+                    mods.append(m_tokenModifiers[bit]);
+            }
+
+            tokens.append({line, col, length, type, mods});
+        }
+
+        if (callback)
+            callback(tokens);
     });
 }
 

@@ -4,12 +4,21 @@
 #include <QObject>
 #include <QProcess>
 #include <QJsonObject>
+#include <QStringList>
 #include <functional>
 
 struct LspLocation {
     QString filePath;
     int line;
     int column;
+};
+
+struct SemanticToken {
+    int line;
+    int column;
+    int length;
+    QString tokenType;
+    QStringList modifiers;
 };
 
 class LspClient : public QObject {
@@ -26,6 +35,8 @@ public:
     void didChange(const QString &filePath, const QString &content);
     void gotoDefinition(const QString &filePath, int line, int column,
                         std::function<void(const QVector<LspLocation> &)> callback);
+    void requestSemanticTokens(const QString &filePath,
+                               std::function<void(const QVector<SemanticToken> &)> callback);
 
 signals:
     void ready();
@@ -47,6 +58,8 @@ private:
     int m_nextId = 1;
     QByteArray m_buffer;
     QMap<int, std::function<void(const QJsonObject &)>> m_callbacks;
+    QStringList m_tokenTypes;
+    QStringList m_tokenModifiers;
 };
 
 #endif
