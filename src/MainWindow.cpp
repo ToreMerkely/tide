@@ -3,6 +3,7 @@
 #include "PythonHighlighter.h"
 #include "LspClient.h"
 #include "SearchBar.h"
+#include "Settings.h"
 #include <QMenuBar>
 #include <QApplication>
 #include <QSplitter>
@@ -26,9 +27,17 @@
 #include <QProcess>
 #include <QProgressDialog>
 
-static QString findPylsp(const QString &rootPath)
+static QString findPylsp(const QString &rootPath, Settings *settings)
 {
-    // Look in .venv first
+    // Check saved setting first
+    QString saved = settings->value("python_venv_path");
+    if (!saved.isEmpty()) {
+        QString path = saved + "/bin/pylsp";
+        if (QFile::exists(path))
+            return path;
+    }
+
+    // Look in .venv
     QString venvPath = rootPath + "/.venv/bin/pylsp";
     if (QFile::exists(venvPath))
         return venvPath;
@@ -54,6 +63,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle("sild");
     resize(1024, 768);
+
+    m_settings = new Settings(QDir::currentPath());
 
     QMenu *fileMenu = menuBar()->addMenu("&File");
     fileMenu->addAction("&Open...", QKeySequence::Open, this, &MainWindow::openFileDialog);
@@ -328,15 +339,13 @@ void MainWindow::ensurePythonLsp()
         return;
 
     QString root = QDir::currentPath();
-    QString pylsp = findPylsp(root);
+    QString pylsp = findPylsp(root, m_settings);
 
     if (!pylsp.isEmpty()) {
         m_pyLsp = new LspClient(pylsp, {}, root, this);
         m_pyLsp->start();
         return;
     }
-
-    m_pyLspPromptShown = true;
 
     QMessageBox msgBox(this);
     msgBox.setWindowTitle("Python Language Server");
@@ -348,11 +357,17 @@ void MainWindow::ensurePythonLsp()
 
     QAbstractButton *createBtn = msgBox.addButton("  Create .venv  ", QMessageBox::ActionRole);
     QAbstractButton *browseBtn = msgBox.addButton("  Browse...  ", QMessageBox::ActionRole);
-    msgBox.addButton("  Skip  ", QMessageBox::RejectRole);
+    QAbstractButton *skipBtn = msgBox.addButton("  Skip  ", QMessageBox::RejectRole);
 
     msgBox.exec();
 
+    if (msgBox.clickedButton() == skipBtn) {
+        m_pyLspPromptShown = true;
+        return;
+    }
+
     if (msgBox.clickedButton() == createBtn) {
+        m_pyLspPromptShown = true;
         // Run the entire setup in the background
         auto *proc = new QProcess(this);
         proc->setWorkingDirectory(root);
@@ -400,7 +415,14 @@ void MainWindow::ensurePythonLsp()
         proc->start("python3", {"--version"});
 
     } else if (msgBox.clickedButton() == browseBtn) {
-        QString dir = QFileDialog::getExistingDirectory(this, "Select Python venv directory", root);
+        QFileDialog dialog(this, "Select Python venv directory", root);
+        dialog.setFileMode(QFileDialog::Directory);
+        dialog.setOption(QFileDialog::ShowDirsOnly, true);
+        dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+        dialog.setFilter(QDir::AllDirs | QDir::Hidden | QDir::NoDotAndDotDot);
+        if (!dialog.exec())
+            return;
+        QString dir = dialog.selectedFiles().first();
         if (dir.isEmpty())
             return;
 
@@ -412,6 +434,8 @@ void MainWindow::ensurePythonLsp()
             return;
         }
 
+        m_pyLspPromptShown = true;
+        m_settings->setValue("python_venv_path", dir);
         m_pyLsp = new LspClient(path, {}, root, this);
         m_pyLsp->start();
     }

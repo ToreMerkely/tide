@@ -12,6 +12,7 @@ class QFileSystemModel;
 class QTabWidget;
 class LspClient;
 class SearchBar;
+class Settings;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -50,6 +51,7 @@ private:
     LspClient *m_pyLsp;
     SearchBar *m_searchBar;
     QTimer *m_autoSaveTimer;
+    Settings *m_settings;
     bool m_pyLspPromptShown = false;
 };
 
