@@ -36,6 +36,7 @@ private:
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
     LspClient *lspForFile(const QString &path) const;
+    void ensurePythonLsp();
     static bool isCppFile(const QString &suffix);
     static bool isPythonFile(const QString &suffix);
 
@@ -49,6 +50,7 @@ private:
     LspClient *m_pyLsp;
     SearchBar *m_searchBar;
     QTimer *m_autoSaveTimer;
+    bool m_pyLspPromptShown = false;
 };
 
 #endif
