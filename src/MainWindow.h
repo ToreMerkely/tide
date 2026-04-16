@@ -5,6 +5,7 @@
 #include <QMap>
 
 class QTimer;
+class QLabel;
 
 class QTreeView;
 class CodeEditor;
@@ -51,6 +52,7 @@ private:
     LspClient *m_cppLsp;
     LspClient *m_pyLsp;
     SearchBar *m_searchBar;
+    QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;
     Settings *m_settings;
     bool m_pyLspPromptShown = false;

@@ -22,6 +22,7 @@
 #include <QTextBlock>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QLabel>
 #include <QTimer>
 #include <QMessageBox>
 #include <QPushButton>
@@ -89,11 +90,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_searchBar = new SearchBar;
 
+    m_pathLabel = new QLabel;
+    m_pathLabel->setContentsMargins(6, 2, 6, 2);
+    m_pathLabel->setStyleSheet("color: #808080; font-size: 11px;");
+    m_pathLabel->hide();
+
     auto *rightPane = new QWidget;
     auto *rightLayout = new QVBoxLayout(rightPane);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
     rightLayout->addWidget(m_searchBar);
+    rightLayout->addWidget(m_pathLabel);
     rightLayout->addWidget(m_tabWidget);
 
     auto *splitter = new QSplitter;
@@ -201,10 +208,17 @@ void MainWindow::onTabChanged(int index)
     if (index < 0) {
         setWindowTitle("sild");
         m_searchBar->setEditor(nullptr);
+        m_pathLabel->hide();
         return;
     }
     setWindowTitle("sild - " + m_tabWidget->tabText(index));
     m_searchBar->setEditor(currentEditor());
+
+    QString filePath = tabFilePath(index);
+    QDir root(QDir::currentPath());
+    QString relative = root.relativeFilePath(filePath);
+    m_pathLabel->setText(relative.replace("/", "  >  "));
+    m_pathLabel->show();
 }
 
 bool MainWindow::event(QEvent *event)
