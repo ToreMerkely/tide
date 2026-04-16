@@ -299,6 +299,9 @@ void MainWindow::loadFile(const QString &path, int line)
     if (isCppFile(suffix)) {
         new CppHighlighter(editor->document());
         m_cppLsp->didOpen(path, content, "cpp");
+        QTimer::singleShot(1000, this, [this, path, editor]() {
+            requestSemanticHighlight(path, editor);
+        });
     } else if (isPythonFile(suffix)) {
         new PythonHighlighter(editor->document());
         ensurePythonLsp();
