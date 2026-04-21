@@ -32,6 +32,7 @@ private slots:
     void navigateBack();
     void navigateForward();
     void showSearch();
+    void showFileSearch();
     void saveAll();
     void onEditorModified();
 

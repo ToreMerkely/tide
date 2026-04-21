@@ -4,6 +4,7 @@
 #include "LspClient.h"
 #include "SearchBar.h"
 #include "Settings.h"
+#include "FileSearchDialog.h"
 #include <QMenuBar>
 #include <QApplication>
 #include <QSplitter>
@@ -168,6 +169,9 @@ MainWindow::MainWindow(QWidget *parent)
     auto *findShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
     connect(findShortcut, &QShortcut::activated, this, &MainWindow::showSearch);
 
+    auto *fileSearchShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N), this);
+    connect(fileSearchShortcut, &QShortcut::activated, this, &MainWindow::showFileSearch);
+
     // Start C++ LSP
     QString root = QDir::currentPath();
     m_cppLsp = new LspClient("clangd", {"--compile-commands-dir=" + root}, root, this);
@@ -270,6 +274,13 @@ void MainWindow::showSearch()
         return;
     m_searchBar->setEditor(editor);
     m_searchBar->activate();
+}
+
+void MainWindow::showFileSearch()
+{
+    FileSearchDialog dialog(QDir::currentPath(), this);
+    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
+        loadFile(dialog.selectedFile());
 }
 
 void MainWindow::closeTab(int index)
