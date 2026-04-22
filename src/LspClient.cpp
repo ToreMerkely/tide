@@ -3,6 +3,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QUrl>
+#include <QFileInfo>
 
 LspClient::LspClient(const QString &command, const QStringList &args,
                      const QString &rootPath, QObject *parent)
@@ -13,6 +14,17 @@ LspClient::LspClient(const QString &command, const QStringList &args,
     , m_rootPath(rootPath)
 {
     connect(m_process, &QProcess::readyReadStandardOutput, this, &LspClient::onReadyRead);
+}
+
+void LspClient::setEnvironment(const QStringList &env)
+{
+    QProcessEnvironment procEnv = QProcessEnvironment::systemEnvironment();
+    for (const QString &e : env) {
+        int eq = e.indexOf('=');
+        if (eq > 0)
+            procEnv.insert(e.left(eq), e.mid(eq + 1));
+    }
+    m_process->setProcessEnvironment(procEnv);
 }
 
 LspClient::~LspClient()
@@ -58,9 +70,19 @@ void LspClient::start()
     };
     caps["general"] = QJsonObject{};
 
+    QString rootUri = QUrl::fromLocalFile(m_rootPath).toString();
+
+    QJsonArray workspaceFolders;
+    workspaceFolders.append(QJsonObject{
+        {"uri", rootUri},
+        {"name", QFileInfo(m_rootPath).fileName()}
+    });
+
     QJsonObject params;
     params["processId"] = (int)QCoreApplication::applicationPid();
-    params["rootUri"] = QUrl::fromLocalFile(m_rootPath).toString();
+    params["rootUri"] = rootUri;
+    params["rootPath"] = m_rootPath;
+    params["workspaceFolders"] = workspaceFolders;
     params["capabilities"] = caps;
 
     sendRequest("initialize", params, [this](const QJsonObject &response) {
@@ -93,6 +115,8 @@ void LspClient::didOpen(const QString &filePath, const QString &content, const Q
     if (!isRunning())
         return;
 
+    m_fileVersions[filePath] = 1;
+
     QJsonObject textDoc;
     textDoc["uri"] = QUrl::fromLocalFile(filePath).toString();
     textDoc["languageId"] = languageId;
@@ -107,9 +131,11 @@ void LspClient::didChange(const QString &filePath, const QString &content)
     if (!isRunning())
         return;
 
+    int version = ++m_fileVersions[filePath];
+
     QJsonObject textDoc;
     textDoc["uri"] = QUrl::fromLocalFile(filePath).toString();
-    textDoc["version"] = 2;
+    textDoc["version"] = version;
 
     QJsonArray changes;
     changes.append(QJsonObject{{"text", content}});

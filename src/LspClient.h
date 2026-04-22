@@ -27,6 +27,7 @@ class LspClient : public QObject {
 public:
     LspClient(const QString &command, const QStringList &args,
               const QString &rootPath, QObject *parent = nullptr);
+    void setEnvironment(const QStringList &env);
     ~LspClient();
 
     void start();
@@ -58,6 +59,7 @@ private:
     int m_nextId = 1;
     QByteArray m_buffer;
     QMap<int, std::function<void(const QJsonObject &)>> m_callbacks;
+    QMap<QString, int> m_fileVersions;
     QStringList m_tokenTypes;
     QStringList m_tokenModifiers;
 };

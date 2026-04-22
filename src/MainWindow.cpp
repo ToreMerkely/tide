@@ -6,6 +6,7 @@
 #include "Settings.h"
 #include "FileSearchDialog.h"
 #include <QMenuBar>
+#include <QStatusBar>
 #include <QApplication>
 #include <QSplitter>
 #include <QTreeView>
@@ -30,35 +31,47 @@
 #include <QProcess>
 #include <QProgressDialog>
 
-static QString findPyright(const QString &rootPath, Settings *settings)
+static QString findPylsp(const QString &rootPath, Settings *settings)
 {
     // Check saved setting first
     QString saved = settings->value("python_venv_path");
     if (!saved.isEmpty()) {
-        QString path = saved + "/bin/pyright-langserver";
+        QString path = saved + "/bin/pylsp";
         if (QFile::exists(path))
             return path;
     }
 
     // Look in .venv
-    QString venvPath = rootPath + "/.venv/bin/pyright-langserver";
+    QString venvPath = rootPath + "/.venv/bin/pylsp";
     if (QFile::exists(venvPath))
         return venvPath;
 
     // Try common venv names
     for (const QString &dir : {"venv", ".env", "env"}) {
-        QString path = rootPath + "/" + dir + "/bin/pyright-langserver";
+        QString path = rootPath + "/" + dir + "/bin/pylsp";
         if (QFile::exists(path))
             return path;
     }
 
     // Check system PATH
     QProcess which;
-    which.start("which", {"pyright-langserver"});
+    which.start("which", {"pylsp"});
     if (which.waitForFinished(2000) && which.exitCode() == 0)
-        return "pyright-langserver";
+        return "pylsp";
 
     return {};
+}
+
+static QStringList findPythonPath(const QString &rootPath)
+{
+    QStringList paths;
+    // Auto-detect src/ directory as a source root
+    if (QDir(rootPath + "/src").exists())
+        paths.append(rootPath + "/src");
+    // Also check for lib/
+    if (QDir(rootPath + "/lib").exists())
+        paths.append(rootPath + "/lib");
+    return paths;
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -310,18 +323,28 @@ void MainWindow::gotoDefinition()
         return;
 
     LspClient *lsp = lspForFile(path);
-    if (!lsp || !lsp->isRunning())
+    if (!lsp) {
+        statusBar()->showMessage("No language server for this file type", 3000);
         return;
+    }
+    if (!lsp->isRunning()) {
+        statusBar()->showMessage("Language server not running", 3000);
+        return;
+    }
+
+    // Save first so LSP sees latest content
+    saveFile();
+    lsp->didChange(path, editor->toPlainText());
 
     QTextCursor cursor = editor->textCursor();
     int line = cursor.blockNumber();
     int column = cursor.columnNumber();
 
-    lsp->didChange(path, editor->toPlainText());
-
     lsp->gotoDefinition(path, line, column, [this](const QVector<LspLocation> &locations) {
-        if (locations.isEmpty())
+        if (locations.isEmpty()) {
+            statusBar()->showMessage("No definition found", 3000);
             return;
+        }
         pushCurrentLocation();
         m_forwardStack.clear();
         const LspLocation &loc = locations.first();
@@ -520,18 +543,21 @@ void MainWindow::ensurePythonLsp()
         return;
 
     QString root = QDir::currentPath();
-    QString pyright = findPyright(root, m_settings);
+    QString pylsp = findPylsp(root, m_settings);
 
-    if (!pyright.isEmpty()) {
-        m_pyLsp = new LspClient(pyright, {"--stdio"}, root, this);
+    if (!pylsp.isEmpty()) {
+        m_pyLsp = new LspClient(pylsp, {}, root, this);
+        QStringList pythonPaths = findPythonPath(root);
+        if (!pythonPaths.isEmpty())
+            m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
         m_pyLsp->start();
         return;
     }
 
     QMessageBox msgBox(this);
     msgBox.setWindowTitle("Python Language Server");
-    msgBox.setText("No Python language server (pyright) was found.\n\n"
-                   "You can create a new .venv with pyright installed,\n"
+    msgBox.setText("No Python language server (pylsp) was found.\n\n"
+                   "You can create a new .venv with pylsp installed,\n"
                    "browse for an existing virtual environment, or\n"
                    "skip to use syntax highlighting only.");
     msgBox.setMinimumWidth(500);
@@ -570,15 +596,18 @@ void MainWindow::ensurePythonLsp()
                     proc->deleteLater();
                     return;
                 }
-                proc->start(root + "/.venv/bin/pip", {"install", "pyright"});
+                proc->start(root + "/.venv/bin/pip", {"install", "python-lsp-server"});
 
             } else {
                 proc->deleteLater();
                 if (exitCode != 0)
                     return;
 
-                QString pyrightPath = root + "/.venv/bin/pyright-langserver";
-                m_pyLsp = new LspClient(pyrightPath, {"--stdio"}, root, this);
+                QString pylspPath = root + "/.venv/bin/pylsp";
+                m_pyLsp = new LspClient(pylspPath, {}, root, this);
+                QStringList pythonPaths = findPythonPath(root);
+                if (!pythonPaths.isEmpty())
+                    m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
                 m_pyLsp->start();
 
                 // Send didOpen for any already-open Python files
@@ -607,17 +636,20 @@ void MainWindow::ensurePythonLsp()
         if (dir.isEmpty())
             return;
 
-        QString path = dir + "/bin/pyright-langserver";
+        QString path = dir + "/bin/pylsp";
         if (!QFile::exists(path)) {
             QMessageBox::warning(this, "Not found",
-                "No pyright-langserver found at:\n" + path + "\n\n"
-                "Make sure pyright is installed in that venv.");
+                "No pylsp found at:\n" + path + "\n\n"
+                "Make sure python-lsp-server is installed in that venv.");
             return;
         }
 
         m_pyLspPromptShown = true;
         m_settings->setValue("python_venv_path", dir);
-        m_pyLsp = new LspClient(path, {"--stdio"}, root, this);
+        m_pyLsp = new LspClient(path, {}, root, this);
+        QStringList pythonPaths = findPythonPath(root);
+        if (!pythonPaths.isEmpty())
+            m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
         m_pyLsp->start();
     }
 }
