@@ -1,0 +1,42 @@
+#ifndef SYMBOLSEARCHDIALOG_H
+#define SYMBOLSEARCHDIALOG_H
+
+#include <QDialog>
+#include <QVector>
+
+class QLineEdit;
+class QListWidget;
+
+class SymbolSearchDialog : public QDialog {
+    Q_OBJECT
+
+public:
+    explicit SymbolSearchDialog(const QString &rootPath, QWidget *parent = nullptr);
+    QString selectedFile() const;
+    int selectedLine() const;
+
+private slots:
+    void onTextChanged(const QString &text);
+    void onItemDoubleClicked();
+
+private:
+    void scanSymbols();
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
+    struct Symbol {
+        QString name;
+        QString file;      // relative path
+        QString fullPath;
+        int line;
+        QString kind;      // "function", "class", "method", etc.
+    };
+
+    QLineEdit *m_input;
+    QListWidget *m_list;
+    QString m_rootPath;
+    QVector<Symbol> m_allSymbols;
+    QString m_selectedFile;
+    int m_selectedLine = -1;
+};
+
+#endif

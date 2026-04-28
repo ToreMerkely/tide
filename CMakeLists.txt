@@ -19,6 +19,7 @@ add_executable(sild
     src/PythonHighlighter.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp
+    src/SymbolSearchDialog.cpp
 )
 
 target_link_libraries(sild PRIVATE Qt6::Widgets)

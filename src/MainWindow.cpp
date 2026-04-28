@@ -5,6 +5,7 @@
 #include "SearchBar.h"
 #include "Settings.h"
 #include "FileSearchDialog.h"
+#include "SymbolSearchDialog.h"
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QApplication>
@@ -277,6 +278,25 @@ bool MainWindow::event(QEvent *event)
 {
     if (event->type() == QEvent::WindowDeactivate)
         saveAll();
+
+    // Double-Shift detection for symbol search
+    if (event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Shift && keyEvent->modifiers() == Qt::ShiftModifier) {
+            if (m_shiftWasReleased && m_lastShiftPress.isValid() && m_lastShiftPress.elapsed() < 400) {
+                m_shiftWasReleased = false;
+                showSymbolSearch();
+                return true;
+            }
+            m_lastShiftPress.start();
+            m_shiftWasReleased = false;
+        }
+    } else if (event->type() == QEvent::KeyRelease) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Shift)
+            m_shiftWasReleased = true;
+    }
+
     return QMainWindow::event(event);
 }
 
@@ -294,6 +314,13 @@ void MainWindow::showFileSearch()
     FileSearchDialog dialog(QDir::currentPath(), this);
     if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
         loadFile(dialog.selectedFile());
+}
+
+void MainWindow::showSymbolSearch()
+{
+    SymbolSearchDialog dialog(QDir::currentPath(), this);
+    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
+        loadFile(dialog.selectedFile(), dialog.selectedLine() - 1); // LSP uses 0-based lines
 }
 
 void MainWindow::closeTab(int index)

@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QMap>
 #include <QStack>
+#include <QElapsedTimer>
 
 class QTimer;
 class QLabel;
@@ -33,6 +34,7 @@ private slots:
     void navigateForward();
     void showSearch();
     void showFileSearch();
+    void showSymbolSearch();
     void saveAll();
     void onEditorModified();
 
@@ -70,6 +72,8 @@ private:
     QStack<NavLocation> m_forwardStack;
     bool m_navigating = false;
     bool m_pyLspPromptShown = false;
+    QElapsedTimer m_lastShiftPress;
+    bool m_shiftWasReleased = false;
 };
 
 #endif
