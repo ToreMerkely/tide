@@ -426,6 +426,28 @@ void MainWindow::onEditorModified()
     m_autoSaveTimer->start();
 }
 
+void MainWindow::onEditorZoom(int delta)
+{
+    int currentSize = 11;
+    if (auto *ed = qobject_cast<CodeEditor *>(m_tabWidget->currentWidget())) {
+        int p = ed->font().pointSize();
+        if (p > 0)
+            currentSize = p;
+    }
+    int size = qBound(6, currentSize + delta, 40);
+    m_settings->setValueInt("editor_font_size", size);
+
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        if (auto *ed = qobject_cast<CodeEditor *>(m_tabWidget->widget(i))) {
+            QFont f = ed->font();
+            f.setPointSize(size);
+            ed->setFont(f);
+        }
+    }
+
+    statusBar()->showMessage(QString("Font size: %1 pt").arg(size), 2000);
+}
+
 void MainWindow::onTabChanged(int index)
 {
     // Save all before switching
@@ -671,10 +693,14 @@ void MainWindow::loadFile(const QString &path, int line)
     QString content = in.readAll();
 
     auto *editor = new CodeEditor;
+    QFont f = editor->font();
+    f.setPointSize(m_settings->valueInt("editor_font_size", f.pointSize()));
+    editor->setFont(f);
     editor->setPlainText(content);
     editor->setProperty("filePath", path);
     editor->document()->setModified(false);
     connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
+    connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
 
     QString suffix = QFileInfo(path).suffix();
     if (isCppFile(suffix)) {

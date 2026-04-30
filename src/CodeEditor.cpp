@@ -71,6 +71,15 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
 
 void CodeEditor::wheelEvent(QWheelEvent *event)
 {
+    if (event->modifiers() & Qt::ControlModifier) {
+        int delta = event->angleDelta().y();
+        if (delta == 0)
+            delta = event->angleDelta().x();
+        if (delta != 0)
+            emit zoomRequested(delta > 0 ? 1 : -1);
+        event->accept();
+        return;
+    }
     if (event->modifiers() & Qt::ShiftModifier) {
         QScrollBar *hbar = horizontalScrollBar();
         int delta = event->angleDelta().y();

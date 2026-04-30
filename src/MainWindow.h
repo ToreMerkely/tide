@@ -40,6 +40,7 @@ private slots:
     void saveAll();
     void onEditorModified();
     void showTabContextMenu(const QPoint &pos);
+    void onEditorZoom(int delta);
 
 private:
     struct NavLocation {
