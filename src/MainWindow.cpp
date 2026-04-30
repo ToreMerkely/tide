@@ -45,6 +45,8 @@
 #include <QWheelEvent>
 #include <QTextBrowser>
 #include <QActionGroup>
+#include <QTextTable>
+#include <QTextFrame>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -245,6 +247,27 @@ MainWindow::MainWindow(QWidget *parent)
     m_mdPreview = new QTextBrowser;
     m_mdPreview->setOpenExternalLinks(false);
     m_mdPreview->setOpenLinks(false);
+    {
+        QFont f = m_mdPreview->font();
+        f.setFamily("Segoe UI, Helvetica, Arial, sans-serif");
+        f.setPointSize(11);
+        m_mdPreview->setFont(f);
+        m_mdPreview->document()->setDocumentMargin(18);
+        m_mdPreview->document()->setDefaultStyleSheet(R"(
+            h1 { font-size: 22pt; margin-top: 24px; margin-bottom: 12px; }
+            h2 { font-size: 17pt; margin-top: 20px; margin-bottom: 10px; }
+            h3 { font-size: 14pt; margin-top: 18px; margin-bottom: 8px; }
+            h4 { font-size: 12pt; margin-top: 14px; margin-bottom: 6px; }
+            p, li { line-height: 150%; }
+            ul, ol { margin: 8px 0; }
+            code { background-color: #3C3F41; padding: 1px 5px; font-family: "JetBrains Mono", monospace; }
+            pre { background-color: #2B2D30; padding: 12px; }
+            pre, pre * { font-family: "JetBrains Mono", monospace; }
+            th { background-color: #2B2D30; font-weight: bold; text-align: left; }
+            blockquote { border-left: 3px solid #4D5054; padding-left: 12px; color: #888; }
+            a { color: #589DF6; }
+        )");
+    }
     m_mdPreview->hide();
 
     m_editorSplitter = new QSplitter(Qt::Horizontal);
@@ -1240,5 +1263,29 @@ void MainWindow::renderMarkdownPreview()
     auto *editor = currentEditor();
     if (!editor)
         return;
-    m_mdPreview->document()->setMarkdown(editor->toPlainText());
+    QTextDocument *doc = m_mdPreview->document();
+    doc->setMarkdown(editor->toPlainText());
+
+    // Qt's markdown importer sets HTML cellspacing/border per cell, which
+    // CSS border-collapse can't fully undo. Rewrite each table's format
+    // directly so we get a clean single-line grid.
+    QList<QTextFrame *> stack;
+    stack.append(doc->rootFrame());
+    while (!stack.isEmpty()) {
+        QTextFrame *frame = stack.takeLast();
+        const auto kids = frame->childFrames();
+        for (QTextFrame *child : kids) {
+            if (auto *table = qobject_cast<QTextTable *>(child)) {
+                QTextTableFormat fmt = table->format();
+                fmt.setBorder(1);
+                fmt.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+                fmt.setBorderBrush(QBrush(QColor(0x3C, 0x3F, 0x41)));
+                fmt.setCellSpacing(0);
+                fmt.setCellPadding(8);
+                fmt.setBorderCollapse(true);
+                table->setFormat(fmt);
+            }
+            stack.append(child);
+        }
+    }
 }
