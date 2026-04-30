@@ -8,7 +8,7 @@ build:
 	@ln -sf $(BUILD_DIR)/compile_commands.json compile_commands.json
 
 run: build
-	@./$(BUILD_DIR)/sild
+	@./$(BUILD_DIR)/tide
 
 clean:
 	@rm -rf $(BUILD_DIR)
