@@ -126,6 +126,22 @@ void SymbolSearchDialog::scanSymbols()
     }
 }
 
+QVector<SymbolSearchDialog::Match>
+SymbolSearchDialog::exactMatches(const QString &name) const
+{
+    QVector<Match> result;
+    for (const Symbol &sym : m_allSymbols) {
+        if (sym.name == name)
+            result.append({sym.fullPath, sym.line});
+    }
+    return result;
+}
+
+void SymbolSearchDialog::setInitialQuery(const QString &query)
+{
+    m_input->setText(query);
+}
+
 void SymbolSearchDialog::onTextChanged(const QString &text)
 {
     m_list->clear();

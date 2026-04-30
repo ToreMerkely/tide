@@ -15,6 +15,13 @@ public:
     QString selectedFile() const;
     int selectedLine() const;
 
+    struct Match {
+        QString fullPath;
+        int line;
+    };
+    QVector<Match> exactMatches(const QString &name) const;
+    void setInitialQuery(const QString &query);
+
 private slots:
     void onTextChanged(const QString &text);
     void onItemDoubleClicked();

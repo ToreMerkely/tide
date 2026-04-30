@@ -39,6 +39,7 @@ private slots:
     void showSymbolSearch();
     void saveAll();
     void onEditorModified();
+    void showTabContextMenu(const QPoint &pos);
 
 private:
     struct NavLocation {

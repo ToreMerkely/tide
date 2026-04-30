@@ -34,6 +34,8 @@
 #include <QCloseEvent>
 #include <QJsonObject>
 #include <QScrollBar>
+#include <QMenu>
+#include <QClipboard>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -152,6 +154,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
+
+    m_tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tabWidget->tabBar(), &QWidget::customContextMenuRequested,
+            this, &MainWindow::showTabContextMenu);
 
     auto *prevTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp), this);
     connect(prevTab, &QShortcut::activated, this, [this]() {
@@ -481,6 +487,24 @@ void MainWindow::closeTab(int index)
         m_openFiles[tabFilePath(i)] = i;
 }
 
+void MainWindow::showTabContextMenu(const QPoint &pos)
+{
+    QTabBar *bar = m_tabWidget->tabBar();
+    int index = bar->tabAt(pos);
+    if (index < 0)
+        return;
+
+    QString path = tabFilePath(index);
+    if (path.isEmpty())
+        return;
+
+    QMenu menu(this);
+    QAction *copyAction = menu.addAction("Copy Path");
+    QAction *chosen = menu.exec(bar->mapToGlobal(pos));
+    if (chosen == copyAction)
+        QApplication::clipboard()->setText(path);
+}
+
 void MainWindow::gotoDefinition()
 {
     auto *editor = currentEditor();
@@ -509,15 +533,47 @@ void MainWindow::gotoDefinition()
     int line = cursor.blockNumber();
     int column = cursor.columnNumber();
 
-    lsp->gotoDefinition(path, line, column, [this](const QVector<LspLocation> &locations) {
-        if (locations.isEmpty()) {
+    QTextCursor wordCursor(cursor);
+    wordCursor.select(QTextCursor::WordUnderCursor);
+    QString word = wordCursor.selectedText();
+
+    lsp->gotoDefinition(path, line, column, [this, word](const QVector<LspLocation> &locations) {
+        if (!locations.isEmpty()) {
+            pushCurrentLocation();
+            m_forwardStack.clear();
+            const LspLocation &loc = locations.first();
+            navigateTo(loc.filePath, loc.line);
+            return;
+        }
+
+        // Fallback: regex symbol scan for the word under the cursor
+        if (word.isEmpty()) {
             statusBar()->showMessage("No definition found", 3000);
             return;
         }
-        pushCurrentLocation();
-        m_forwardStack.clear();
-        const LspLocation &loc = locations.first();
-        navigateTo(loc.filePath, loc.line);
+
+        SymbolSearchDialog dialog(QDir::currentPath(), this);
+        auto matches = dialog.exactMatches(word);
+
+        if (matches.size() == 1) {
+            pushCurrentLocation();
+            m_forwardStack.clear();
+            navigateTo(matches.first().fullPath, matches.first().line - 1);
+            statusBar()->showMessage("Found via symbol index (LSP returned no result)", 3000);
+            return;
+        }
+
+        if (matches.size() > 1) {
+            dialog.setInitialQuery(word);
+            if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty()) {
+                pushCurrentLocation();
+                m_forwardStack.clear();
+                navigateTo(dialog.selectedFile(), dialog.selectedLine() - 1);
+            }
+            return;
+        }
+
+        statusBar()->showMessage("No definition found", 3000);
     });
 }
 
