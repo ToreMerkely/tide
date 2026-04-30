@@ -17,5 +17,6 @@
         <file>icons/view-source.svg</file>
         <file>icons/view-split.svg</file>
         <file>icons/view-preview.svg</file>
+        <file>icons/select-file.svg</file>
     </qresource>
 </RCC>

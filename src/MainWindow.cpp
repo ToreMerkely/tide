@@ -297,8 +297,30 @@ MainWindow::MainWindow(QWidget *parent)
     m_mdRenderTimer->setInterval(300);
     connect(m_mdRenderTimer, &QTimer::timeout, this, &MainWindow::renderMarkdownPreview);
 
+    auto *selectFileBtn = new QToolButton;
+    selectFileBtn->setIcon(QIcon(":/icons/icons/select-file.svg"));
+    selectFileBtn->setIconSize(QSize(18, 18));
+    selectFileBtn->setFixedSize(26, 26);
+    selectFileBtn->setAutoRaise(true);
+    selectFileBtn->setToolTip("Select Opened File");
+    connect(selectFileBtn, &QToolButton::clicked, this, &MainWindow::revealCurrentFileInTree);
+
+    auto *treeToolbar = new QWidget;
+    auto *treeToolbarLayout = new QHBoxLayout(treeToolbar);
+    treeToolbarLayout->setContentsMargins(2, 2, 2, 2);
+    treeToolbarLayout->setSpacing(0);
+    treeToolbarLayout->addWidget(selectFileBtn);
+    treeToolbarLayout->addStretch();
+
+    auto *leftPane = new QWidget;
+    auto *leftLayout = new QVBoxLayout(leftPane);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(0);
+    leftLayout->addWidget(treeToolbar);
+    leftLayout->addWidget(m_treeView, 1);
+
     auto *splitter = new QSplitter;
-    splitter->addWidget(m_treeView);
+    splitter->addWidget(leftPane);
     splitter->addWidget(rightPane);
     splitter->setSizes({200, 824});
     setCentralWidget(splitter);
@@ -1256,6 +1278,27 @@ void MainWindow::applyMarkdownMode()
         m_pageStack->show();
         renderMarkdownPreview();
     }
+}
+
+void MainWindow::revealCurrentFileInTree()
+{
+    QString path = tabFilePath(m_tabBar->currentIndex());
+    if (path.isEmpty())
+        return;
+
+    QModelIndex idx = m_fileModel->index(path);
+    if (!idx.isValid())
+        return;
+
+    // Expand all ancestors top-down so lazy-loaded children are populated
+    QList<QModelIndex> chain;
+    for (QModelIndex p = idx.parent(); p.isValid(); p = p.parent())
+        chain.prepend(p);
+    for (const QModelIndex &p : chain)
+        m_treeView->expand(p);
+
+    m_treeView->setCurrentIndex(idx);
+    m_treeView->scrollTo(idx, QAbstractItemView::PositionAtCenter);
 }
 
 void MainWindow::renderMarkdownPreview()

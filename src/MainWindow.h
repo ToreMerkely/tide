@@ -46,6 +46,7 @@ private slots:
     void onEditorModified();
     void showTabContextMenu(const QPoint &pos);
     void onEditorZoom(int delta);
+    void revealCurrentFileInTree();
 
 private:
     struct NavLocation {
