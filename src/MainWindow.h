@@ -3,11 +3,13 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include <QSet>
 #include <QStack>
 #include <QElapsedTimer>
 
 class QTimer;
 class QLabel;
+class QCloseEvent;
 
 class QTreeView;
 class CodeEditor;
@@ -57,6 +59,12 @@ private:
     static bool isPythonFile(const QString &suffix);
 
     bool event(QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
+
+    void saveSession();
+    void restoreSession();
+    void collectExpandedDirs(const QModelIndex &parent, QStringList &out) const;
+    void onDirectoryLoaded(const QString &path);
 
     QTreeView *m_treeView;
     QTabWidget *m_tabWidget;
@@ -74,6 +82,7 @@ private:
     bool m_pyLspPromptShown = false;
     QElapsedTimer m_lastShiftPress;
     bool m_shiftWasReleased = false;
+    QSet<QString> m_pendingExpand;
 };
 
 #endif

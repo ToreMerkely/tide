@@ -1,10 +1,11 @@
 #include "Settings.h"
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 
 Settings::Settings(const QString &rootPath)
-    : m_configDir(rootPath + "/.sild")
+    : m_configDir(rootPath + "/.tide")
     , m_configFile(m_configDir + "/config.json")
 {
     QDir().mkpath(m_configDir);
@@ -19,6 +20,51 @@ QString Settings::value(const QString &key, const QString &defaultValue) const
 }
 
 void Settings::setValue(const QString &key, const QString &value)
+{
+    m_data[key] = value;
+    save();
+}
+
+QStringList Settings::valueList(const QString &key) const
+{
+    QStringList result;
+    if (!m_data.contains(key))
+        return result;
+    for (const auto &v : m_data[key].toArray())
+        result.append(v.toString());
+    return result;
+}
+
+void Settings::setValueList(const QString &key, const QStringList &value)
+{
+    QJsonArray arr;
+    for (const QString &s : value)
+        arr.append(s);
+    m_data[key] = arr;
+    save();
+}
+
+int Settings::valueInt(const QString &key, int defaultValue) const
+{
+    if (m_data.contains(key))
+        return m_data[key].toInt(defaultValue);
+    return defaultValue;
+}
+
+void Settings::setValueInt(const QString &key, int value)
+{
+    m_data[key] = value;
+    save();
+}
+
+QJsonObject Settings::valueObject(const QString &key) const
+{
+    if (m_data.contains(key))
+        return m_data[key].toObject();
+    return {};
+}
+
+void Settings::setValueObject(const QString &key, const QJsonObject &value)
 {
     m_data[key] = value;
     save();

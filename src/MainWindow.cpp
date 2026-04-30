@@ -31,6 +31,9 @@
 #include <QPushButton>
 #include <QProcess>
 #include <QProgressDialog>
+#include <QCloseEvent>
+#include <QJsonObject>
+#include <QScrollBar>
 
 static QString findPylsp(const QString &rootPath, Settings *settings)
 {
@@ -78,7 +81,7 @@ static QStringList findPythonPath(const QString &rootPath)
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("sild");
+    setWindowTitle("tide");
     resize(1024, 768);
 
     m_settings = new Settings(QDir::currentPath());
@@ -198,6 +201,123 @@ MainWindow::MainWindow(QWidget *parent)
     m_autoSaveTimer->setSingleShot(true);
     m_autoSaveTimer->setInterval(3000);
     connect(m_autoSaveTimer, &QTimer::timeout, this, &MainWindow::saveAll);
+
+    connect(m_fileModel, &QFileSystemModel::directoryLoaded,
+            this, &MainWindow::onDirectoryLoaded);
+
+    restoreSession();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    saveAll();
+    saveSession();
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::saveSession()
+{
+    QStringList paths;
+    QJsonObject editorState;
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        QString path = tabFilePath(i);
+        if (path.isEmpty())
+            continue;
+        paths.append(path);
+
+        auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(i));
+        if (!editor)
+            continue;
+        QJsonObject st;
+        st["line"] = editor->textCursor().blockNumber();
+        st["col"] = editor->textCursor().columnNumber();
+        st["scroll"] = editor->verticalScrollBar()->value();
+        editorState[path] = st;
+    }
+
+    QString activePath = tabFilePath(m_tabWidget->currentIndex());
+
+    QStringList expanded;
+    collectExpandedDirs(m_treeView->rootIndex(), expanded);
+
+    m_settings->setValueList("session.openFiles", paths);
+    m_settings->setValue("session.activeFile", activePath);
+    m_settings->setValueObject("session.editorState", editorState);
+    m_settings->setValueList("session.expandedDirs", expanded);
+}
+
+void MainWindow::collectExpandedDirs(const QModelIndex &parent, QStringList &out) const
+{
+    int rows = m_fileModel->rowCount(parent);
+    for (int i = 0; i < rows; ++i) {
+        QModelIndex child = m_fileModel->index(i, 0, parent);
+        if (m_treeView->isExpanded(child)) {
+            out.append(m_fileModel->filePath(child));
+            collectExpandedDirs(child, out);
+        }
+    }
+}
+
+void MainWindow::restoreSession()
+{
+    QStringList paths = m_settings->valueList("session.openFiles");
+    QString activePath = m_settings->value("session.activeFile");
+    QJsonObject editorState = m_settings->valueObject("session.editorState");
+
+    for (const QString &path : paths) {
+        if (!QFile::exists(path))
+            continue;
+        loadFile(path);
+
+        auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(m_tabWidget->count() - 1));
+        if (!editor || !editorState.contains(path))
+            continue;
+        QJsonObject st = editorState[path].toObject();
+        int line = st.value("line").toInt();
+        int col = st.value("col").toInt();
+        int scroll = st.value("scroll").toInt();
+
+        QTextBlock block = editor->document()->findBlockByNumber(line);
+        if (block.isValid()) {
+            QTextCursor cursor(block);
+            cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor,
+                                qMin(col, block.length() - 1));
+            editor->setTextCursor(cursor);
+        }
+        // Defer scroll restore until after layout settles
+        QTimer::singleShot(0, editor, [editor, scroll]() {
+            editor->verticalScrollBar()->setValue(scroll);
+        });
+    }
+
+    if (!activePath.isEmpty() && m_openFiles.contains(activePath))
+        m_tabWidget->setCurrentIndex(m_openFiles[activePath]);
+
+    QStringList expanded = m_settings->valueList("session.expandedDirs");
+    for (const QString &dir : expanded)
+        m_pendingExpand.insert(dir);
+    // Trigger expansion for already-loaded directories (e.g. the root)
+    onDirectoryLoaded(QDir::currentPath());
+}
+
+void MainWindow::onDirectoryLoaded(const QString &path)
+{
+    if (m_pendingExpand.isEmpty())
+        return;
+
+    // Expand any pending dirs whose parent is `path` (now populated)
+    QModelIndex parentIdx = m_fileModel->index(path);
+    int rows = m_fileModel->rowCount(parentIdx);
+    for (int i = 0; i < rows; ++i) {
+        QModelIndex child = m_fileModel->index(i, 0, parentIdx);
+        QString childPath = m_fileModel->filePath(child);
+        if (m_pendingExpand.contains(childPath)) {
+            m_pendingExpand.remove(childPath);
+            m_treeView->expand(child);
+            // Triggers lazy load; remaining nested dirs handled when their
+            // directoryLoaded fires.
+        }
+    }
 }
 
 void MainWindow::openFile(const QModelIndex &index)
@@ -259,12 +379,12 @@ void MainWindow::onTabChanged(int index)
     saveAll();
 
     if (index < 0) {
-        setWindowTitle("sild");
+        setWindowTitle("tide");
         m_searchBar->setEditor(nullptr);
         m_pathLabel->hide();
         return;
     }
-    setWindowTitle("sild - " + m_tabWidget->tabText(index));
+    setWindowTitle("tide - " + m_tabWidget->tabText(index));
     m_searchBar->setEditor(currentEditor());
 
     QString filePath = tabFilePath(index);
