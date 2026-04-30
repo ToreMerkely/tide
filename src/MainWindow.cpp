@@ -667,6 +667,12 @@ void MainWindow::requestSemanticHighlight(const QString &path, CodeEditor *edito
             sel.cursor = cursor;
             sel.format.setForeground(it.value());
 
+            // Function/method declarations are blue; calls stay yellow
+            if ((tok.tokenType == "function" || tok.tokenType == "method")
+                && (tok.modifiers.contains("declaration")
+                    || tok.modifiers.contains("definition")))
+                sel.format.setForeground(QColor(0x56, 0xA8, 0xF5));
+
             // Bold for keywords
             if (tok.tokenType == "keyword")
                 sel.format.setFontWeight(QFont::Bold);

@@ -9,12 +9,12 @@ int main(int argc, char *argv[])
     app.setStyle(QStyleFactory::create("Fusion"));
 
     QPalette palette;
-    palette.setColor(QPalette::Window, QColor(0x3c, 0x3f, 0x41));
+    palette.setColor(QPalette::Window, QColor(0x2b, 0x2d, 0x30));
     palette.setColor(QPalette::WindowText, QColor(0xa9, 0xb7, 0xc6));
-    palette.setColor(QPalette::Base, QColor(0x2b, 0x2b, 0x2b));
-    palette.setColor(QPalette::AlternateBase, QColor(0x32, 0x32, 0x32));
+    palette.setColor(QPalette::Base, QColor(0x1e, 0x1f, 0x22));
+    palette.setColor(QPalette::AlternateBase, QColor(0x26, 0x27, 0x29));
     palette.setColor(QPalette::Text, QColor(0xa9, 0xb7, 0xc6));
-    palette.setColor(QPalette::Button, QColor(0x3c, 0x3f, 0x41));
+    palette.setColor(QPalette::Button, QColor(0x2b, 0x2d, 0x30));
     palette.setColor(QPalette::ButtonText, QColor(0xa9, 0xb7, 0xc6));
     palette.setColor(QPalette::Highlight, QColor(0x21, 0x42, 0x83));
     palette.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));

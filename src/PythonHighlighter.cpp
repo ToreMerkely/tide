@@ -75,12 +75,20 @@ PythonHighlighter::PythonHighlighter(QTextDocument *parent)
         decoratorFormat
     });
 
-    // Function definitions (yellow)
-    QTextCharFormat functionFormat;
-    functionFormat.setForeground(QColor(0xFF, 0xC6, 0x6D));
+    // Function calls (yellow) — applied first so def/class rules below override
+    QTextCharFormat functionCallFormat;
+    functionCallFormat.setForeground(QColor(0xFF, 0xC6, 0x6D));
+    m_rules.append({
+        QRegularExpression("\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"),
+        functionCallFormat
+    });
+
+    // Function definitions (blue)
+    QTextCharFormat functionDefFormat;
+    functionDefFormat.setForeground(QColor(0x56, 0xA8, 0xF5));
     m_rules.append({
         QRegularExpression("(?<=\\bdef\\s)[A-Za-z_][A-Za-z0-9_]*"),
-        functionFormat
+        functionDefFormat
     });
 
     // Class names (lavender)
@@ -89,10 +97,14 @@ PythonHighlighter::PythonHighlighter(QTextDocument *parent)
         builtinFormat
     });
 
-    // Function calls (yellow)
+    // Dunder names (pink, italic) — last so it wins for both definitions
+    // and call sites
+    QTextCharFormat dunderFormat;
+    dunderFormat.setForeground(QColor(0xB5, 0x89, 0xF0));
+    dunderFormat.setFontItalic(true);
     m_rules.append({
-        QRegularExpression("\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"),
-        functionFormat
+        QRegularExpression("\\b__[A-Za-z_][A-Za-z0-9_]*__\\b"),
+        dunderFormat
     });
 
     // Numbers (blue)
