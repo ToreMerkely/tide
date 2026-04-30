@@ -358,9 +358,58 @@ void CodeEditor::keyReleaseEvent(QKeyEvent *event)
     QPlainTextEdit::keyReleaseEvent(event);
 }
 
+static int leadingIndentSpaces(const QString &line)
+{
+    int spaces = 0;
+    for (QChar c : line) {
+        if (c == ' ') ++spaces;
+        else if (c == '\t') spaces += INDENT_WIDTH;
+        else break;
+    }
+    return spaces;
+}
+
 void CodeEditor::paintEvent(QPaintEvent *event)
 {
     QPlainTextEdit::paintEvent(event);
+
+    // Indent guides
+    {
+        QPainter painter(viewport());
+        painter.setPen(QPen(QColor(0x30, 0x33, 0x38), 1));
+        const int charWidth = fontMetrics().horizontalAdvance(' ');
+        const int xOff = qRound(contentOffset().x());
+
+        QTextBlock block = firstVisibleBlock();
+        while (block.isValid()) {
+            QRectF g = blockBoundingGeometry(block).translated(contentOffset());
+            int top = qRound(g.top());
+            int bottom = qRound(g.bottom());
+            if (top > event->rect().bottom())
+                break;
+            if (bottom >= event->rect().top() && block.isVisible()) {
+                QString text = block.text();
+                int leading;
+                if (text.trimmed().isEmpty()) {
+                    leading = 0;
+                    QTextBlock next = block.next();
+                    while (next.isValid() && next.text().trimmed().isEmpty())
+                        next = next.next();
+                    if (next.isValid())
+                        leading = leadingIndentSpaces(next.text());
+                } else {
+                    leading = leadingIndentSpaces(text);
+                }
+                int levels = leading / INDENT_WIDTH;
+                for (int level = 0; level < levels; ++level) {
+                    int x = level * INDENT_WIDTH * charWidth + xOff;
+                    painter.drawLine(x, top, x, bottom);
+                }
+            }
+            block = block.next();
+        }
+    }
+
     drawMultiCursors();
 }
 
