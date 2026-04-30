@@ -35,34 +35,56 @@
 #include <QJsonObject>
 #include <QScrollBar>
 
-static QString findPylsp(const QString &rootPath, Settings *settings)
+static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
+    static const QString BIN = "jedi-language-server";
+
     // Check saved setting first
     QString saved = settings->value("python_venv_path");
     if (!saved.isEmpty()) {
-        QString path = saved + "/bin/pylsp";
+        QString path = saved + "/bin/" + BIN;
         if (QFile::exists(path))
             return path;
     }
 
     // Look in .venv
-    QString venvPath = rootPath + "/.venv/bin/pylsp";
+    QString venvPath = rootPath + "/.venv/bin/" + BIN;
     if (QFile::exists(venvPath))
         return venvPath;
 
     // Try common venv names
     for (const QString &dir : {"venv", ".env", "env"}) {
-        QString path = rootPath + "/" + dir + "/bin/pylsp";
+        QString path = rootPath + "/" + dir + "/bin/" + BIN;
         if (QFile::exists(path))
             return path;
     }
 
     // Check system PATH
     QProcess which;
-    which.start("which", {"pylsp"});
+    which.start("which", {BIN});
     if (which.waitForFinished(2000) && which.exitCode() == 0)
-        return "pylsp";
+        return BIN;
 
+    return {};
+}
+
+static QString findExistingVenv(const QString &rootPath, Settings *settings)
+{
+    auto isVenv = [](const QString &dir) {
+        return QFile::exists(dir + "/pyvenv.cfg")
+            || QFile::exists(dir + "/bin/python")
+            || QFile::exists(dir + "/bin/python3");
+    };
+
+    QString saved = settings->value("python_venv_path");
+    if (!saved.isEmpty() && isVenv(saved))
+        return saved;
+
+    for (const QString &dir : {".venv", "venv", ".env", "env"}) {
+        QString path = rootPath + "/" + dir;
+        if (isVenv(path))
+            return path;
+    }
     return {};
 }
 
@@ -583,8 +605,12 @@ void MainWindow::loadFile(const QString &path, int line)
     } else if (isPythonFile(suffix)) {
         new PythonHighlighter(editor->document());
         ensurePythonLsp();
-        if (m_pyLsp && m_pyLsp->isRunning())
+        if (m_pyLsp && m_pyLsp->isRunning()) {
             m_pyLsp->didOpen(path, content, "python");
+            QTimer::singleShot(1000, this, [this, path, editor]() {
+                requestSemanticHighlight(path, editor);
+            });
+        }
     }
 
     QString name = QFileInfo(path).fileName();
@@ -696,10 +722,10 @@ void MainWindow::ensurePythonLsp()
         return;
 
     QString root = QDir::currentPath();
-    QString pylsp = findPylsp(root, m_settings);
+    QString lspBin = findJediLsp(root, m_settings);
 
-    if (!pylsp.isEmpty()) {
-        m_pyLsp = new LspClient(pylsp, {}, root, this);
+    if (!lspBin.isEmpty()) {
+        m_pyLsp = new LspClient(lspBin, {}, root, this);
         QStringList pythonPaths = findPythonPath(root);
         if (!pythonPaths.isEmpty())
             m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
@@ -707,10 +733,51 @@ void MainWindow::ensurePythonLsp()
         return;
     }
 
+    // If a venv already exists in the project, just offer to install into it
+    QString existingVenv = findExistingVenv(root, m_settings);
+    if (!existingVenv.isEmpty()) {
+        QMessageBox box(this);
+        box.setWindowTitle("Install jedi-language-server?");
+        box.setText("Install jedi-language-server into\n" + existingVenv + " ?");
+        box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+        box.setDefaultButton(QMessageBox::Yes);
+        int answer = box.exec();
+        if (answer == QMessageBox::Yes) {
+            m_pyLspPromptShown = true;
+            auto *proc = new QProcess(this);
+            proc->setWorkingDirectory(root);
+            connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                    this, [this, proc, existingVenv, root](int exitCode, QProcess::ExitStatus) {
+                proc->deleteLater();
+                if (exitCode != 0)
+                    return;
+
+                QString lspBinPath = existingVenv + "/bin/jedi-language-server";
+                m_pyLsp = new LspClient(lspBinPath, {}, root, this);
+                QStringList pythonPaths = findPythonPath(root);
+                if (!pythonPaths.isEmpty())
+                    m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
+                m_pyLsp->start();
+
+                for (int i = 0; i < m_tabWidget->count(); ++i) {
+                    QString p = tabFilePath(i);
+                    if (isPythonFile(QFileInfo(p).suffix())) {
+                        auto *ed = qobject_cast<CodeEditor *>(m_tabWidget->widget(i));
+                        if (ed)
+                            m_pyLsp->didOpen(p, ed->toPlainText(), "python");
+                    }
+                }
+            });
+            proc->start(existingVenv + "/bin/pip", {"install", "jedi-language-server"});
+            return;
+        }
+        // No → fall through to full dialog (Create / Browse / Skip)
+    }
+
     QMessageBox msgBox(this);
     msgBox.setWindowTitle("Python Language Server");
-    msgBox.setText("No Python language server (pylsp) was found.\n\n"
-                   "You can create a new .venv with pylsp installed,\n"
+    msgBox.setText("No Python language server (jedi-language-server) was found.\n\n"
+                   "You can create a new .venv with jedi-language-server installed,\n"
                    "browse for an existing virtual environment, or\n"
                    "skip to use syntax highlighting only.");
     msgBox.setMinimumWidth(500);
@@ -749,15 +816,15 @@ void MainWindow::ensurePythonLsp()
                     proc->deleteLater();
                     return;
                 }
-                proc->start(root + "/.venv/bin/pip", {"install", "python-lsp-server"});
+                proc->start(root + "/.venv/bin/pip", {"install", "jedi-language-server"});
 
             } else {
                 proc->deleteLater();
                 if (exitCode != 0)
                     return;
 
-                QString pylspPath = root + "/.venv/bin/pylsp";
-                m_pyLsp = new LspClient(pylspPath, {}, root, this);
+                QString lspBinPath = root + "/.venv/bin/jedi-language-server";
+                m_pyLsp = new LspClient(lspBinPath, {}, root, this);
                 QStringList pythonPaths = findPythonPath(root);
                 if (!pythonPaths.isEmpty())
                     m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
@@ -789,11 +856,11 @@ void MainWindow::ensurePythonLsp()
         if (dir.isEmpty())
             return;
 
-        QString path = dir + "/bin/pylsp";
+        QString path = dir + "/bin/jedi-language-server";
         if (!QFile::exists(path)) {
             QMessageBox::warning(this, "Not found",
-                "No pylsp found at:\n" + path + "\n\n"
-                "Make sure python-lsp-server is installed in that venv.");
+                "No jedi-language-server found at:\n" + path + "\n\n"
+                "Make sure jedi-language-server is installed in that venv.");
             return;
         }
 
