@@ -128,6 +128,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_treeView->hideColumn(2); // type
     m_treeView->hideColumn(3); // date modified
     m_treeView->header()->hide();
+    {
+        QFont tf = m_treeView->font();
+        int saved = m_settings->valueInt("tree_font_size", tf.pointSize() > 0 ? tf.pointSize() : 10);
+        tf.setPointSize(saved);
+        m_treeView->setFont(tf);
+    }
+    m_treeView->viewport()->installEventFilter(this);
 
     m_tabWidget = new QTabWidget;
     m_tabWidget->setTabsClosable(true);
@@ -353,6 +360,26 @@ void MainWindow::onDirectoryLoaded(const QString &path)
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_treeView->viewport() && event->type() == QEvent::Wheel) {
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        if (wheel->modifiers() & Qt::ControlModifier) {
+            int d = wheel->angleDelta().y();
+            if (d == 0)
+                d = wheel->angleDelta().x();
+            if (d != 0) {
+                QFont f = m_treeView->font();
+                int cur = f.pointSize() > 0 ? f.pointSize() : 10;
+                int size = qBound(6, cur + (d > 0 ? 1 : -1), 30);
+                f.setPointSize(size);
+                m_treeView->setFont(f);
+                m_settings->setValueInt("tree_font_size", size);
+                statusBar()->showMessage(QString("Tree font: %1 pt").arg(size), 2000);
+            }
+            return true;
+        }
+        return false;
+    }
+
     if (obj == m_tabWidget->tabBar() && event->type() == QEvent::Wheel) {
         auto *wheel = static_cast<QWheelEvent *>(event);
         int delta = wheel->angleDelta().y();
