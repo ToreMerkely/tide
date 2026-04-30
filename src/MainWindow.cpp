@@ -36,6 +36,8 @@
 #include <QScrollBar>
 #include <QMenu>
 #include <QClipboard>
+#include <QToolButton>
+#include <QWheelEvent>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -158,6 +160,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_tabWidget->tabBar(), &QWidget::customContextMenuRequested,
             this, &MainWindow::showTabContextMenu);
+    m_tabWidget->tabBar()->installEventFilter(this);
 
     auto *prevTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp), this);
     connect(prevTab, &QShortcut::activated, this, [this]() {
@@ -346,6 +349,28 @@ void MainWindow::onDirectoryLoaded(const QString &path)
             // directoryLoaded fires.
         }
     }
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_tabWidget->tabBar() && event->type() == QEvent::Wheel) {
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        int delta = wheel->angleDelta().y();
+        if (delta == 0)
+            delta = wheel->angleDelta().x();
+        if (delta == 0)
+            return false;
+
+        Qt::ArrowType wanted = (delta > 0) ? Qt::LeftArrow : Qt::RightArrow;
+        for (QToolButton *btn : m_tabWidget->tabBar()->findChildren<QToolButton *>()) {
+            if (btn->arrowType() == wanted && btn->isEnabled()) {
+                btn->click();
+                break;
+            }
+        }
+        return true;
+    }
+    return QMainWindow::eventFilter(obj, event);
 }
 
 void MainWindow::openFile(const QModelIndex &index)
