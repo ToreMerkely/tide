@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "CppHighlighter.h"
 #include "PythonHighlighter.h"
+#include "JsonHighlighter.h"
 #include "LspClient.h"
 #include "SearchBar.h"
 #include "Settings.h"
@@ -738,6 +739,8 @@ void MainWindow::loadFile(const QString &path, int line)
         QTimer::singleShot(1000, this, [this, path, editor]() {
             requestSemanticHighlight(path, editor);
         });
+    } else if (isJsonFile(suffix)) {
+        new JsonHighlighter(editor->document());
     } else if (isPythonFile(suffix)) {
         new PythonHighlighter(editor->document());
         ensurePythonLsp();
@@ -1029,4 +1032,9 @@ bool MainWindow::isCppFile(const QString &suffix)
 bool MainWindow::isPythonFile(const QString &suffix)
 {
     return suffix == "py" || suffix == "pyw" || suffix == "pyi";
+}
+
+bool MainWindow::isJsonFile(const QString &suffix)
+{
+    return suffix == "json";
 }

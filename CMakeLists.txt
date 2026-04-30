@@ -18,6 +18,7 @@ add_executable(tide
     src/LspClient.cpp
     src/SearchBar.cpp
     src/PythonHighlighter.cpp
+    src/JsonHighlighter.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp
     src/SymbolSearchDialog.cpp

@@ -59,6 +59,7 @@ private:
     void requestSemanticHighlight(const QString &path, CodeEditor *editor);
     static bool isCppFile(const QString &suffix);
     static bool isPythonFile(const QString &suffix);
+    static bool isJsonFile(const QString &suffix);
 
     bool event(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
