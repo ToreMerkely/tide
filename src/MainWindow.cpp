@@ -24,8 +24,8 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QTabWidget>
 #include <QTabBar>
+#include <QStackedWidget>
 #include <QShortcut>
 #include <QTextBlock>
 #include <QTextEdit>
@@ -43,6 +43,8 @@
 #include <QClipboard>
 #include <QToolButton>
 #include <QWheelEvent>
+#include <QTextBrowser>
+#include <QActionGroup>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -149,6 +151,51 @@ MainWindow::MainWindow(QWidget *parent)
     fileMenu->addSeparator();
     fileMenu->addAction("E&xit", QKeySequence::Quit, QApplication::instance(), &QApplication::quit);
 
+    QMenu *viewMenu = menuBar()->addMenu("&View");
+    QMenu *mdViewMenu = viewMenu->addMenu("Markdown View");
+    auto *mdGroup = new QActionGroup(this);
+    m_mdSourceAct = mdViewMenu->addAction("Source");
+    m_mdSplitAct = mdViewMenu->addAction("Split");
+    m_mdPreviewAct = mdViewMenu->addAction("Preview");
+    for (QAction *a : {m_mdSourceAct, m_mdSplitAct, m_mdPreviewAct}) {
+        a->setCheckable(true);
+        mdGroup->addAction(a);
+    }
+    QString savedMode = m_settings->value("markdown_view_mode", "source");
+    if (savedMode == "source")        m_mdSourceAct->setChecked(true);
+    else if (savedMode == "preview")  m_mdPreviewAct->setChecked(true);
+    else                              m_mdSplitAct->setChecked(true);
+    connect(m_mdSourceAct, &QAction::triggered, this, [this]() { setMarkdownMode("source"); });
+    connect(m_mdSplitAct, &QAction::triggered, this, [this]() { setMarkdownMode("split"); });
+    connect(m_mdPreviewAct, &QAction::triggered, this, [this]() { setMarkdownMode("preview"); });
+
+    auto makeMdBtn = [](const QString &icon, const QString &tip) {
+        auto *b = new QToolButton;
+        b->setIcon(QIcon(icon));
+        b->setIconSize(QSize(18, 18));
+        b->setFixedSize(24, 22);
+        b->setCheckable(true);
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        return b;
+    };
+    m_mdSourceBtn  = makeMdBtn(":/icons/icons/view-source.svg",  "Source");
+    m_mdSplitBtn   = makeMdBtn(":/icons/icons/view-split.svg",   "Split");
+    m_mdPreviewBtn = makeMdBtn(":/icons/icons/view-preview.svg", "Preview");
+
+    m_mdButtonsContainer = new QWidget;
+    auto *btnRow = new QHBoxLayout(m_mdButtonsContainer);
+    btnRow->setContentsMargins(2, 0, 2, 0);
+    btnRow->setSpacing(0);
+    btnRow->addWidget(m_mdSourceBtn);
+    btnRow->addWidget(m_mdSplitBtn);
+    btnRow->addWidget(m_mdPreviewBtn);
+    m_mdButtonsContainer->hide();
+
+    connect(m_mdSourceBtn, &QToolButton::clicked, this, [this]() { setMarkdownMode("source"); });
+    connect(m_mdSplitBtn, &QToolButton::clicked, this, [this]() { setMarkdownMode("split"); });
+    connect(m_mdPreviewBtn, &QToolButton::clicked, this, [this]() { setMarkdownMode("preview"); });
+
     m_fileModel = new QFileSystemModel(this);
     m_fileModel->setIconProvider(new FileIconProvider());
     m_fileModel->setRootPath(QDir::currentPath());
@@ -168,8 +215,25 @@ MainWindow::MainWindow(QWidget *parent)
     }
     m_treeView->viewport()->installEventFilter(this);
 
-    m_tabWidget = new QTabWidget;
-    m_tabWidget->setTabsClosable(true);
+    m_tabBar = new QTabBar;
+    m_tabBar->setTabsClosable(true);
+    m_tabBar->setMovable(true);
+    m_tabBar->setExpanding(false);
+    m_tabBar->setUsesScrollButtons(true);
+    m_tabBar->setMinimumHeight(28);
+    m_tabBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_pageStack = new QStackedWidget;
+    connect(m_tabBar, &QTabBar::currentChanged, m_pageStack, &QStackedWidget::setCurrentIndex);
+    connect(m_tabBar, &QTabBar::tabMoved, this, [this](int from, int to) {
+        QWidget *w = m_pageStack->widget(from);
+        if (!w)
+            return;
+        m_pageStack->removeWidget(w);
+        m_pageStack->insertWidget(to, w);
+        m_openFiles.clear();
+        for (int i = 0; i < m_tabBar->count(); ++i)
+            m_openFiles[tabFilePath(i)] = i;
+    });
 
     m_searchBar = new SearchBar;
 
@@ -178,13 +242,37 @@ MainWindow::MainWindow(QWidget *parent)
     m_pathLabel->setStyleSheet("color: #808080; font-size: 11px;");
     m_pathLabel->hide();
 
+    m_mdPreview = new QTextBrowser;
+    m_mdPreview->setOpenExternalLinks(false);
+    m_mdPreview->setOpenLinks(false);
+    m_mdPreview->hide();
+
+    m_editorSplitter = new QSplitter(Qt::Horizontal);
+    m_editorSplitter->addWidget(m_pageStack);
+    m_editorSplitter->addWidget(m_mdPreview);
+    m_editorSplitter->setStretchFactor(0, 1);
+    m_editorSplitter->setStretchFactor(1, 1);
+
     auto *rightPane = new QWidget;
     auto *rightLayout = new QVBoxLayout(rightPane);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
+    auto *pathBar = new QWidget;
+    auto *pathBarLayout = new QHBoxLayout(pathBar);
+    pathBarLayout->setContentsMargins(0, 0, 0, 0);
+    pathBarLayout->setSpacing(0);
+    pathBarLayout->addWidget(m_pathLabel, 1);
+    pathBarLayout->addWidget(m_mdButtonsContainer);
+
     rightLayout->addWidget(m_searchBar);
-    rightLayout->addWidget(m_pathLabel);
-    rightLayout->addWidget(m_tabWidget);
+    rightLayout->addWidget(pathBar);
+    rightLayout->addWidget(m_tabBar);
+    rightLayout->addWidget(m_editorSplitter, 1);
+
+    m_mdRenderTimer = new QTimer(this);
+    m_mdRenderTimer->setSingleShot(true);
+    m_mdRenderTimer->setInterval(300);
+    connect(m_mdRenderTimer, &QTimer::timeout, this, &MainWindow::renderMarkdownPreview);
 
     auto *splitter = new QSplitter;
     splitter->addWidget(m_treeView);
@@ -193,26 +281,26 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(splitter);
 
     connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
-    connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
-    connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
+    connect(m_tabBar, &QTabBar::currentChanged, this, &MainWindow::onTabChanged);
+    connect(m_tabBar, &QTabBar::tabCloseRequested, this, &MainWindow::closeTab);
 
-    m_tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_tabWidget->tabBar(), &QWidget::customContextMenuRequested,
+    m_tabBar->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tabBar, &QWidget::customContextMenuRequested,
             this, &MainWindow::showTabContextMenu);
-    m_tabWidget->tabBar()->installEventFilter(this);
+    m_tabBar->installEventFilter(this);
 
     auto *prevTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp), this);
     connect(prevTab, &QShortcut::activated, this, [this]() {
-        int count = m_tabWidget->count();
+        int count = m_tabBar->count();
         if (count > 1)
-            m_tabWidget->setCurrentIndex((m_tabWidget->currentIndex() - 1 + count) % count);
+            m_tabBar->setCurrentIndex((m_tabBar->currentIndex() - 1 + count) % count);
     });
 
     auto *nextTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageDown), this);
     connect(nextTab, &QShortcut::activated, this, [this]() {
-        int count = m_tabWidget->count();
+        int count = m_tabBar->count();
         if (count > 1)
-            m_tabWidget->setCurrentIndex((m_tabWidget->currentIndex() + 1) % count);
+            m_tabBar->setCurrentIndex((m_tabBar->currentIndex() + 1) % count);
     });
 
     auto *gotoDef = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_B), this);
@@ -226,29 +314,29 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *closeTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_W), this);
     connect(closeTabShortcut, &QShortcut::activated, this, [this]() {
-        int index = m_tabWidget->currentIndex();
+        int index = m_tabBar->currentIndex();
         if (index >= 0)
             closeTab(index);
     });
 
     auto *moveTabLeft = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_PageUp), this);
     connect(moveTabLeft, &QShortcut::activated, this, [this]() {
-        int index = m_tabWidget->currentIndex();
+        int index = m_tabBar->currentIndex();
         if (index > 0) {
-            m_tabWidget->tabBar()->moveTab(index, index - 1);
+            m_tabBar->moveTab(index, index - 1);
             m_openFiles.clear();
-            for (int i = 0; i < m_tabWidget->count(); ++i)
+            for (int i = 0; i < m_tabBar->count(); ++i)
                 m_openFiles[tabFilePath(i)] = i;
         }
     });
 
     auto *moveTabRight = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_PageDown), this);
     connect(moveTabRight, &QShortcut::activated, this, [this]() {
-        int index = m_tabWidget->currentIndex();
-        if (index >= 0 && index < m_tabWidget->count() - 1) {
-            m_tabWidget->tabBar()->moveTab(index, index + 1);
+        int index = m_tabBar->currentIndex();
+        if (index >= 0 && index < m_tabBar->count() - 1) {
+            m_tabBar->moveTab(index, index + 1);
             m_openFiles.clear();
-            for (int i = 0; i < m_tabWidget->count(); ++i)
+            for (int i = 0; i < m_tabBar->count(); ++i)
                 m_openFiles[tabFilePath(i)] = i;
         }
     });
@@ -289,13 +377,13 @@ void MainWindow::saveSession()
 {
     QStringList paths;
     QJsonObject editorState;
-    for (int i = 0; i < m_tabWidget->count(); ++i) {
+    for (int i = 0; i < m_tabBar->count(); ++i) {
         QString path = tabFilePath(i);
         if (path.isEmpty())
             continue;
         paths.append(path);
 
-        auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(i));
+        auto *editor = qobject_cast<CodeEditor *>(m_pageStack->widget(i));
         if (!editor)
             continue;
         QJsonObject st;
@@ -305,7 +393,7 @@ void MainWindow::saveSession()
         editorState[path] = st;
     }
 
-    QString activePath = tabFilePath(m_tabWidget->currentIndex());
+    QString activePath = tabFilePath(m_tabBar->currentIndex());
 
     QStringList expanded;
     collectExpandedDirs(m_treeView->rootIndex(), expanded);
@@ -339,7 +427,7 @@ void MainWindow::restoreSession()
             continue;
         loadFile(path);
 
-        auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(m_tabWidget->count() - 1));
+        auto *editor = qobject_cast<CodeEditor *>(m_pageStack->widget(m_tabBar->count() - 1));
         if (!editor || !editorState.contains(path))
             continue;
         QJsonObject st = editorState[path].toObject();
@@ -361,7 +449,7 @@ void MainWindow::restoreSession()
     }
 
     if (!activePath.isEmpty() && m_openFiles.contains(activePath))
-        m_tabWidget->setCurrentIndex(m_openFiles[activePath]);
+        m_tabBar->setCurrentIndex(m_openFiles[activePath]);
 
     QStringList expanded = m_settings->valueList("session.expandedDirs");
     for (const QString &dir : expanded)
@@ -412,7 +500,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         return false;
     }
 
-    if (obj == m_tabWidget->tabBar() && event->type() == QEvent::Wheel) {
+    if (obj == m_tabBar && event->type() == QEvent::Wheel) {
         auto *wheel = static_cast<QWheelEvent *>(event);
         int delta = wheel->angleDelta().y();
         if (delta == 0)
@@ -421,7 +509,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             return false;
 
         Qt::ArrowType wanted = (delta > 0) ? Qt::LeftArrow : Qt::RightArrow;
-        for (QToolButton *btn : m_tabWidget->tabBar()->findChildren<QToolButton *>()) {
+        for (QToolButton *btn : m_tabBar->findChildren<QToolButton *>()) {
             if (btn->arrowType() == wanted && btn->isEnabled()) {
                 btn->click();
                 break;
@@ -449,7 +537,7 @@ void MainWindow::openFileDialog()
 
 void MainWindow::saveFile()
 {
-    saveTab(m_tabWidget->currentIndex());
+    saveTab(m_tabBar->currentIndex());
 }
 
 void MainWindow::saveTab(int index)
@@ -461,7 +549,7 @@ void MainWindow::saveTab(int index)
     if (path.isEmpty())
         return;
 
-    auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(index));
+    auto *editor = qobject_cast<CodeEditor *>(m_pageStack->widget(index));
     if (!editor || !editor->document()->isModified())
         return;
 
@@ -476,19 +564,22 @@ void MainWindow::saveTab(int index)
 
 void MainWindow::saveAll()
 {
-    for (int i = 0; i < m_tabWidget->count(); ++i)
+    for (int i = 0; i < m_tabBar->count(); ++i)
         saveTab(i);
 }
 
 void MainWindow::onEditorModified()
 {
     m_autoSaveTimer->start();
+    if (m_mdPreview->isVisible()
+        && isMarkdownFile(QFileInfo(tabFilePath(m_tabBar->currentIndex())).suffix()))
+        m_mdRenderTimer->start();
 }
 
 void MainWindow::onEditorZoom(int delta)
 {
     int currentSize = 11;
-    if (auto *ed = qobject_cast<CodeEditor *>(m_tabWidget->currentWidget())) {
+    if (auto *ed = qobject_cast<CodeEditor *>(m_pageStack->currentWidget())) {
         int p = ed->font().pointSize();
         if (p > 0)
             currentSize = p;
@@ -496,8 +587,8 @@ void MainWindow::onEditorZoom(int delta)
     int size = qBound(6, currentSize + delta, 40);
     m_settings->setValueInt("editor_font_size", size);
 
-    for (int i = 0; i < m_tabWidget->count(); ++i) {
-        if (auto *ed = qobject_cast<CodeEditor *>(m_tabWidget->widget(i))) {
+    for (int i = 0; i < m_tabBar->count(); ++i) {
+        if (auto *ed = qobject_cast<CodeEditor *>(m_pageStack->widget(i))) {
             QFont f = ed->font();
             f.setPointSize(size);
             ed->setFont(f);
@@ -518,7 +609,7 @@ void MainWindow::onTabChanged(int index)
         m_pathLabel->hide();
         return;
     }
-    setWindowTitle("tide - " + m_tabWidget->tabText(index));
+    setWindowTitle("tide - " + m_tabBar->tabText(index));
     m_searchBar->setEditor(currentEditor());
 
     QString filePath = tabFilePath(index);
@@ -526,6 +617,8 @@ void MainWindow::onTabChanged(int index)
     QString relative = root.relativeFilePath(filePath);
     m_pathLabel->setText(relative.replace("/", "  >  "));
     m_pathLabel->show();
+
+    applyMarkdownMode();
 }
 
 bool MainWindow::event(QEvent *event)
@@ -583,19 +676,22 @@ void MainWindow::closeTab(int index)
     QString path = tabFilePath(index);
     m_openFiles.remove(path);
 
-    QWidget *widget = m_tabWidget->widget(index);
-    m_tabWidget->removeTab(index);
-    delete widget;
+    QWidget *widget = m_pageStack->widget(index);
+    m_tabBar->removeTab(index);
+    if (widget) {
+        m_pageStack->removeWidget(widget);
+        delete widget;
+    }
 
     // Rebuild index map since tab indices shift after removal
     m_openFiles.clear();
-    for (int i = 0; i < m_tabWidget->count(); ++i)
+    for (int i = 0; i < m_tabBar->count(); ++i)
         m_openFiles[tabFilePath(i)] = i;
 }
 
 void MainWindow::showTabContextMenu(const QPoint &pos)
 {
-    QTabBar *bar = m_tabWidget->tabBar();
+    QTabBar *bar = m_tabBar;
     int index = bar->tabAt(pos);
     if (index < 0)
         return;
@@ -617,7 +713,7 @@ void MainWindow::gotoDefinition()
     if (!editor)
         return;
 
-    QString path = tabFilePath(m_tabWidget->currentIndex());
+    QString path = tabFilePath(m_tabBar->currentIndex());
     if (path.isEmpty())
         return;
 
@@ -688,7 +784,7 @@ void MainWindow::pushCurrentLocation()
     auto *editor = currentEditor();
     if (!editor)
         return;
-    QString path = tabFilePath(m_tabWidget->currentIndex());
+    QString path = tabFilePath(m_tabBar->currentIndex());
     if (path.isEmpty())
         return;
     m_backStack.push({path, editor->textCursor().blockNumber()});
@@ -707,7 +803,7 @@ void MainWindow::navigateBack()
         return;
 
     auto *editor = currentEditor();
-    QString curPath = tabFilePath(m_tabWidget->currentIndex());
+    QString curPath = tabFilePath(m_tabBar->currentIndex());
     int curLine = editor ? editor->textCursor().blockNumber() : 0;
     m_forwardStack.push({curPath, curLine});
 
@@ -721,7 +817,7 @@ void MainWindow::navigateForward()
         return;
 
     auto *editor = currentEditor();
-    QString curPath = tabFilePath(m_tabWidget->currentIndex());
+    QString curPath = tabFilePath(m_tabBar->currentIndex());
     int curLine = editor ? editor->textCursor().blockNumber() : 0;
     m_backStack.push({curPath, curLine});
 
@@ -733,7 +829,7 @@ void MainWindow::loadFile(const QString &path, int line)
 {
     // If already open, switch to that tab
     if (m_openFiles.contains(path)) {
-        m_tabWidget->setCurrentIndex(m_openFiles[path]);
+        m_tabBar->setCurrentIndex(m_openFiles[path]);
         if (line >= 0) {
             auto *editor = currentEditor();
             QTextBlock block = editor->document()->findBlockByNumber(line);
@@ -789,9 +885,10 @@ void MainWindow::loadFile(const QString &path, int line)
     }
 
     QString name = QFileInfo(path).fileName();
-    int index = m_tabWidget->addTab(editor, name);
+    m_pageStack->addWidget(editor);
+    int index = m_tabBar->addTab(name);
     m_openFiles[path] = index;
-    m_tabWidget->setCurrentIndex(index);
+    m_tabBar->setCurrentIndex(index);
 
     if (line >= 0) {
         QTextBlock block = editor->document()->findBlockByNumber(line);
@@ -803,12 +900,12 @@ void MainWindow::loadFile(const QString &path, int line)
 
 CodeEditor *MainWindow::currentEditor() const
 {
-    return qobject_cast<CodeEditor *>(m_tabWidget->currentWidget());
+    return qobject_cast<CodeEditor *>(m_pageStack->currentWidget());
 }
 
 QString MainWindow::tabFilePath(int index) const
 {
-    QWidget *widget = m_tabWidget->widget(index);
+    QWidget *widget = m_pageStack->widget(index);
     if (!widget)
         return {};
     return widget->property("filePath").toString();
@@ -934,10 +1031,10 @@ void MainWindow::ensurePythonLsp()
                     m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
                 m_pyLsp->start();
 
-                for (int i = 0; i < m_tabWidget->count(); ++i) {
+                for (int i = 0; i < m_tabBar->count(); ++i) {
                     QString p = tabFilePath(i);
                     if (isPythonFile(QFileInfo(p).suffix())) {
-                        auto *ed = qobject_cast<CodeEditor *>(m_tabWidget->widget(i));
+                        auto *ed = qobject_cast<CodeEditor *>(m_pageStack->widget(i));
                         if (ed)
                             m_pyLsp->didOpen(p, ed->toPlainText(), "python");
                     }
@@ -1006,10 +1103,10 @@ void MainWindow::ensurePythonLsp()
                 m_pyLsp->start();
 
                 // Send didOpen for any already-open Python files
-                for (int i = 0; i < m_tabWidget->count(); ++i) {
+                for (int i = 0; i < m_tabBar->count(); ++i) {
                     QString path = tabFilePath(i);
                     if (isPythonFile(QFileInfo(path).suffix())) {
-                        auto *editor = qobject_cast<CodeEditor *>(m_tabWidget->widget(i));
+                        auto *editor = qobject_cast<CodeEditor *>(m_pageStack->widget(i));
                         if (editor)
                             m_pyLsp->didOpen(path, editor->toPlainText(), "python");
                     }
@@ -1090,4 +1187,58 @@ bool MainWindow::isMakefile(const QString &fileName, const QString &suffix)
     return fileName.compare("Makefile", Qt::CaseInsensitive) == 0
         || fileName.compare("GNUmakefile", Qt::CaseInsensitive) == 0
         || suffix == "mk";
+}
+
+bool MainWindow::isMarkdownFile(const QString &suffix)
+{
+    return suffix == "md" || suffix == "markdown";
+}
+
+void MainWindow::setMarkdownMode(const QString &mode)
+{
+    m_settings->setValue("markdown_view_mode", mode);
+    applyMarkdownMode();
+}
+
+void MainWindow::applyMarkdownMode()
+{
+    QString suffix = QFileInfo(tabFilePath(m_tabBar->currentIndex())).suffix();
+    bool isMd = isMarkdownFile(suffix);
+
+    m_mdButtonsContainer->setVisible(isMd);
+
+    if (!isMd) {
+        m_mdPreview->hide();
+        m_pageStack->show();
+        return;
+    }
+
+    QString mode = m_settings->value("markdown_view_mode", "source");
+    m_mdSourceBtn->setChecked(mode == "source");
+    m_mdSplitBtn->setChecked(mode == "split");
+    m_mdPreviewBtn->setChecked(mode == "preview");
+    m_mdSourceAct->setChecked(mode == "source");
+    m_mdSplitAct->setChecked(mode == "split");
+    m_mdPreviewAct->setChecked(mode == "preview");
+
+    if (mode == "source") {
+        m_mdPreview->hide();
+        m_pageStack->show();
+    } else if (mode == "preview") {
+        m_mdPreview->show();
+        m_pageStack->hide();
+        renderMarkdownPreview();
+    } else {
+        m_mdPreview->show();
+        m_pageStack->show();
+        renderMarkdownPreview();
+    }
+}
+
+void MainWindow::renderMarkdownPreview()
+{
+    auto *editor = currentEditor();
+    if (!editor)
+        return;
+    m_mdPreview->document()->setMarkdown(editor->toPlainText());
 }

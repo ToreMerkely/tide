@@ -10,11 +10,16 @@
 class QTimer;
 class QLabel;
 class QCloseEvent;
+class QTextBrowser;
+class QSplitter;
+class QAction;
+class QToolButton;
 
 class QTreeView;
 class CodeEditor;
 class QFileSystemModel;
-class QTabWidget;
+class QTabBar;
+class QStackedWidget;
 class LspClient;
 class SearchBar;
 class Settings;
@@ -63,6 +68,11 @@ private:
     static bool isYamlFile(const QString &suffix);
     static bool isShellFile(const QString &suffix);
     static bool isMakefile(const QString &fileName, const QString &suffix);
+    static bool isMarkdownFile(const QString &suffix);
+
+    void applyMarkdownMode();
+    void renderMarkdownPreview();
+    void setMarkdownMode(const QString &mode);
 
     bool event(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -74,7 +84,8 @@ private:
     void onDirectoryLoaded(const QString &path);
 
     QTreeView *m_treeView;
-    QTabWidget *m_tabWidget;
+    QTabBar *m_tabBar;
+    QStackedWidget *m_pageStack;
     QFileSystemModel *m_fileModel;
     QMap<QString, int> m_openFiles; // path -> tab index
     LspClient *m_cppLsp;
@@ -90,6 +101,16 @@ private:
     QElapsedTimer m_lastShiftPress;
     bool m_shiftWasReleased = false;
     QSet<QString> m_pendingExpand;
+    QTextBrowser *m_mdPreview;
+    QSplitter *m_editorSplitter;
+    QTimer *m_mdRenderTimer;
+    QAction *m_mdSourceAct = nullptr;
+    QAction *m_mdSplitAct = nullptr;
+    QAction *m_mdPreviewAct = nullptr;
+    QWidget *m_mdButtonsContainer = nullptr;
+    QToolButton *m_mdSourceBtn = nullptr;
+    QToolButton *m_mdSplitBtn = nullptr;
+    QToolButton *m_mdPreviewBtn = nullptr;
 };
 
 #endif
