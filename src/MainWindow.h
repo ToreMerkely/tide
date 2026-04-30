@@ -62,6 +62,7 @@ private:
     static bool isJsonFile(const QString &suffix);
     static bool isYamlFile(const QString &suffix);
     static bool isShellFile(const QString &suffix);
+    static bool isMakefile(const QString &fileName, const QString &suffix);
 
     bool event(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;

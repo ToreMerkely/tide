@@ -4,6 +4,7 @@
 #include "JsonHighlighter.h"
 #include "YamlHighlighter.h"
 #include "ShellHighlighter.h"
+#include "MakefileHighlighter.h"
 #include "LspClient.h"
 #include "SearchBar.h"
 #include "Settings.h"
@@ -761,7 +762,10 @@ void MainWindow::loadFile(const QString &path, int line)
     connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
 
     QString suffix = QFileInfo(path).suffix();
-    if (isCppFile(suffix)) {
+    QString fileName = QFileInfo(path).fileName();
+    if (isMakefile(fileName, suffix)) {
+        new MakefileHighlighter(editor->document());
+    } else if (isCppFile(suffix)) {
         new CppHighlighter(editor->document());
         m_cppLsp->didOpen(path, content, "cpp");
         QTimer::singleShot(1000, this, [this, path, editor]() {
@@ -1079,4 +1083,11 @@ bool MainWindow::isYamlFile(const QString &suffix)
 bool MainWindow::isShellFile(const QString &suffix)
 {
     return suffix == "sh" || suffix == "bash" || suffix == "zsh";
+}
+
+bool MainWindow::isMakefile(const QString &fileName, const QString &suffix)
+{
+    return fileName.compare("Makefile", Qt::CaseInsensitive) == 0
+        || fileName.compare("GNUmakefile", Qt::CaseInsensitive) == 0
+        || suffix == "mk";
 }
