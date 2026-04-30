@@ -19,6 +19,8 @@ add_executable(tide
     src/SearchBar.cpp
     src/PythonHighlighter.cpp
     src/JsonHighlighter.cpp
+    src/YamlHighlighter.cpp
+    src/ShellHighlighter.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp
     src/SymbolSearchDialog.cpp

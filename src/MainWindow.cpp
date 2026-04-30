@@ -2,6 +2,8 @@
 #include "CppHighlighter.h"
 #include "PythonHighlighter.h"
 #include "JsonHighlighter.h"
+#include "YamlHighlighter.h"
+#include "ShellHighlighter.h"
 #include "LspClient.h"
 #include "SearchBar.h"
 #include "Settings.h"
@@ -72,6 +74,32 @@ static QString findJediLsp(const QString &rootPath, Settings *settings)
         return BIN;
 
     return {};
+}
+
+static bool isShellByShebang(const QString &content)
+{
+    if (!content.startsWith("#!"))
+        return false;
+    int eol = content.indexOf('\n');
+    QString line = content.left(eol < 0 ? content.size() : eol);
+
+    static const QRegularExpression re("^#!\\s*(\\S+)(?:\\s+(\\S+))?");
+    auto m = re.match(line);
+    if (!m.hasMatch())
+        return false;
+
+    QString interp = m.captured(1);
+    QString arg = m.captured(2);
+    QString last = interp.endsWith("/env") ? arg : interp;
+    if (last.isEmpty())
+        return false;
+
+    int slash = last.lastIndexOf('/');
+    if (slash >= 0)
+        last = last.mid(slash + 1);
+
+    return last == "sh" || last == "bash" || last == "zsh"
+        || last == "ksh" || last == "dash" || last == "fish";
 }
 
 static QString findExistingVenv(const QString &rootPath, Settings *settings)
@@ -741,6 +769,10 @@ void MainWindow::loadFile(const QString &path, int line)
         });
     } else if (isJsonFile(suffix)) {
         new JsonHighlighter(editor->document());
+    } else if (isYamlFile(suffix)) {
+        new YamlHighlighter(editor->document());
+    } else if (isShellFile(suffix) || (suffix.isEmpty() && isShellByShebang(content))) {
+        new ShellHighlighter(editor->document());
     } else if (isPythonFile(suffix)) {
         new PythonHighlighter(editor->document());
         ensurePythonLsp();
@@ -1037,4 +1069,14 @@ bool MainWindow::isPythonFile(const QString &suffix)
 bool MainWindow::isJsonFile(const QString &suffix)
 {
     return suffix == "json";
+}
+
+bool MainWindow::isYamlFile(const QString &suffix)
+{
+    return suffix == "yml" || suffix == "yaml";
+}
+
+bool MainWindow::isShellFile(const QString &suffix)
+{
+    return suffix == "sh" || suffix == "bash" || suffix == "zsh";
 }
