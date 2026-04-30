@@ -23,6 +23,7 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
 
 private slots:
     void updateLineNumberAreaWidth(int newBlockCount);

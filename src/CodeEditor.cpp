@@ -3,6 +3,8 @@
 #include <QFont>
 #include <QTextBlock>
 #include <QPainter>
+#include <QScrollBar>
+#include <QWheelEvent>
 
 static const int INDENT_WIDTH = 4;
 static const QString INDENT_STR = QString(INDENT_WIDTH, ' ');
@@ -14,6 +16,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     font.setStyleHint(QFont::Monospace);
     setFont(font);
     setTabStopDistance(fontMetrics().horizontalAdvance(' ') * INDENT_WIDTH);
+    setLineWrapMode(QPlainTextEdit::NoWrap);
 
     m_lineNumberArea = new LineNumberArea(this);
 
@@ -64,6 +67,20 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
     QPlainTextEdit::resizeEvent(event);
     QRect cr = contentsRect();
     m_lineNumberArea->setGeometry(QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+}
+
+void CodeEditor::wheelEvent(QWheelEvent *event)
+{
+    if (event->modifiers() & Qt::ShiftModifier) {
+        QScrollBar *hbar = horizontalScrollBar();
+        int delta = event->angleDelta().y();
+        if (delta == 0)
+            delta = event->angleDelta().x();
+        hbar->setValue(hbar->value() - delta);
+        event->accept();
+        return;
+    }
+    QPlainTextEdit::wheelEvent(event);
 }
 
 void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
