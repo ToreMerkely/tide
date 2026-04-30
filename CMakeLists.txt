@@ -22,6 +22,7 @@ add_executable(tide
     src/YamlHighlighter.cpp
     src/ShellHighlighter.cpp
     src/MakefileHighlighter.cpp
+    src/MarkdownHighlighter.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp
     src/SymbolSearchDialog.cpp

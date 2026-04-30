@@ -5,6 +5,7 @@
 #include "YamlHighlighter.h"
 #include "ShellHighlighter.h"
 #include "MakefileHighlighter.h"
+#include "MarkdownHighlighter.h"
 #include "LspClient.h"
 #include "SearchBar.h"
 #include "Settings.h"
@@ -914,6 +915,8 @@ void MainWindow::loadFile(const QString &path, int line)
         });
     } else if (isJsonFile(suffix)) {
         new JsonHighlighter(editor->document());
+    } else if (isMarkdownFile(suffix)) {
+        new MarkdownHighlighter(editor->document());
     } else if (isYamlFile(suffix)) {
         new YamlHighlighter(editor->document());
     } else if (isShellFile(suffix) || (suffix.isEmpty() && isShellByShebang(content))) {
