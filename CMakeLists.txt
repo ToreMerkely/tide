@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
@@ -20,6 +21,8 @@ add_executable(tide
     src/Settings.cpp
     src/FileSearchDialog.cpp
     src/SymbolSearchDialog.cpp
+    src/FileIconProvider.cpp
+    resources/icons.qrc
 )
 
 target_link_libraries(tide PRIVATE Qt6::Widgets)

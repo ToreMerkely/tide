@@ -6,6 +6,7 @@
 #include "Settings.h"
 #include "FileSearchDialog.h"
 #include "SymbolSearchDialog.h"
+#include "FileIconProvider.h"
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QApplication>
@@ -119,6 +120,7 @@ MainWindow::MainWindow(QWidget *parent)
     fileMenu->addAction("E&xit", QKeySequence::Quit, QApplication::instance(), &QApplication::quit);
 
     m_fileModel = new QFileSystemModel(this);
+    m_fileModel->setIconProvider(new FileIconProvider());
     m_fileModel->setRootPath(QDir::currentPath());
 
     m_treeView = new QTreeView;

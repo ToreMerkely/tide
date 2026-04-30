@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>icons/python.svg</file>
+        <file>icons/cpp.svg</file>
+        <file>icons/header.svg</file>
+        <file>icons/c.svg</file>
+        <file>icons/json.svg</file>
+        <file>icons/markdown.svg</file>
+        <file>icons/yaml.svg</file>
+        <file>icons/cmake.svg</file>
+        <file>icons/makefile.svg</file>
+        <file>icons/shell.svg</file>
+        <file>icons/git.svg</file>
+        <file>icons/text.svg</file>
+        <file>icons/folder.svg</file>
+        <file>icons/folder-open.svg</file>
+    </qresource>
+</RCC>
