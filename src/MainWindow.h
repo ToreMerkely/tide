@@ -102,6 +102,8 @@ private:
     QElapsedTimer m_lastShiftPress;
     bool m_shiftWasReleased = false;
     QSet<QString> m_pendingExpand;
+    QString m_pendingTreeSelection;
+    int m_pendingTreeScroll = -1;
     QTextBrowser *m_mdPreview;
     QSplitter *m_editorSplitter;
     QTimer *m_mdRenderTimer;

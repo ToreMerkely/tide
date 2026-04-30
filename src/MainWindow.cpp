@@ -448,6 +448,11 @@ void MainWindow::saveSession()
     m_settings->setValue("session.activeFile", activePath);
     m_settings->setValueObject("session.editorState", editorState);
     m_settings->setValueList("session.expandedDirs", expanded);
+
+    QString treeSelected = m_fileModel->filePath(m_treeView->currentIndex());
+    m_settings->setValue("session.treeSelected", treeSelected);
+    m_settings->setValueInt("session.treeScroll",
+                            m_treeView->verticalScrollBar()->value());
 }
 
 void MainWindow::collectExpandedDirs(const QModelIndex &parent, QStringList &out) const
@@ -500,27 +505,46 @@ void MainWindow::restoreSession()
     QStringList expanded = m_settings->valueList("session.expandedDirs");
     for (const QString &dir : expanded)
         m_pendingExpand.insert(dir);
+    m_pendingTreeSelection = m_settings->value("session.treeSelected");
+    m_pendingTreeScroll = m_settings->valueInt("session.treeScroll", -1);
     // Trigger expansion for already-loaded directories (e.g. the root)
     onDirectoryLoaded(QDir::currentPath());
 }
 
 void MainWindow::onDirectoryLoaded(const QString &path)
 {
-    if (m_pendingExpand.isEmpty())
-        return;
-
     // Expand any pending dirs whose parent is `path` (now populated)
-    QModelIndex parentIdx = m_fileModel->index(path);
-    int rows = m_fileModel->rowCount(parentIdx);
-    for (int i = 0; i < rows; ++i) {
-        QModelIndex child = m_fileModel->index(i, 0, parentIdx);
-        QString childPath = m_fileModel->filePath(child);
-        if (m_pendingExpand.contains(childPath)) {
-            m_pendingExpand.remove(childPath);
-            m_treeView->expand(child);
-            // Triggers lazy load; remaining nested dirs handled when their
-            // directoryLoaded fires.
+    if (!m_pendingExpand.isEmpty()) {
+        QModelIndex parentIdx = m_fileModel->index(path);
+        int rows = m_fileModel->rowCount(parentIdx);
+        for (int i = 0; i < rows; ++i) {
+            QModelIndex child = m_fileModel->index(i, 0, parentIdx);
+            QString childPath = m_fileModel->filePath(child);
+            if (m_pendingExpand.contains(childPath)) {
+                m_pendingExpand.remove(childPath);
+                m_treeView->expand(child);
+                // Triggers lazy load; remaining nested dirs handled when
+                // their directoryLoaded fires.
+            }
         }
+    }
+
+    // Restore the previously selected tree row once its parent is loaded
+    if (!m_pendingTreeSelection.isEmpty()) {
+        QModelIndex idx = m_fileModel->index(m_pendingTreeSelection);
+        if (idx.isValid()) {
+            m_treeView->setCurrentIndex(idx);
+            m_pendingTreeSelection.clear();
+        }
+    }
+
+    // Restore tree scroll value once all previously-expanded dirs are loaded
+    if (m_pendingExpand.isEmpty() && m_pendingTreeScroll >= 0) {
+        int saved = m_pendingTreeScroll;
+        m_pendingTreeScroll = -1;
+        QTimer::singleShot(0, this, [this, saved]() {
+            m_treeView->verticalScrollBar()->setValue(saved);
+        });
     }
 }
 
