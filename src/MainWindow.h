@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include <QHash>
 #include <QSet>
 #include <QStack>
 #include <QElapsedTimer>
@@ -23,6 +24,7 @@ class QStackedWidget;
 class LspClient;
 class SearchBar;
 class Settings;
+class EditorGroup;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -85,10 +87,17 @@ private:
     void onDirectoryLoaded(const QString &path);
 
     QTreeView *m_treeView;
-    QTabBar *m_tabBar;
-    QStackedWidget *m_pageStack;
+    QList<EditorGroup *> m_groups;
+    EditorGroup *m_activeGroup = nullptr;
+    QSplitter *m_groupSplitter = nullptr;
+    QWidget *m_previewTabHolder = nullptr;
+    EditorGroup *m_previewBorrowedFrom = nullptr;
+    void setupGroup(EditorGroup *group);
+    void splitRight();
+    void closeSplit();
+    EditorGroup *findGroupForPath(const QString &path) const;
     QFileSystemModel *m_fileModel;
-    QMap<QString, int> m_openFiles; // path -> tab index
+    // (was m_openFiles cache; now derived by walking groups via findGroupForPath)
     LspClient *m_cppLsp;
     LspClient *m_pyLsp;
     SearchBar *m_searchBar;
@@ -111,6 +120,9 @@ private:
     QAction *m_mdSourceAct = nullptr;
     QAction *m_mdSplitAct = nullptr;
     QAction *m_mdPreviewAct = nullptr;
+    QAction *m_splitRightAct = nullptr;
+    QAction *m_closeSplitAct = nullptr;
+    void updateSplitActions();
     QWidget *m_mdButtonsContainer = nullptr;
     QToolButton *m_mdSourceBtn = nullptr;
     QToolButton *m_mdSplitBtn = nullptr;
