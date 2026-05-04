@@ -106,6 +106,7 @@ private:
     int m_pendingTreeScroll = -1;
     QTextBrowser *m_mdPreview;
     QSplitter *m_editorSplitter;
+    QSplitter *m_mainSplitter;
     QTimer *m_mdRenderTimer;
     QAction *m_mdSourceAct = nullptr;
     QAction *m_mdSplitAct = nullptr;

@@ -320,11 +320,11 @@ MainWindow::MainWindow(QWidget *parent)
     leftLayout->addWidget(treeToolbar);
     leftLayout->addWidget(m_treeView, 1);
 
-    auto *splitter = new QSplitter;
-    splitter->addWidget(leftPane);
-    splitter->addWidget(rightPane);
-    splitter->setSizes({200, 824});
-    setCentralWidget(splitter);
+    m_mainSplitter = new QSplitter;
+    m_mainSplitter->addWidget(leftPane);
+    m_mainSplitter->addWidget(rightPane);
+    m_mainSplitter->setSizes({200, 824});
+    setCentralWidget(m_mainSplitter);
 
     connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
     connect(m_tabBar, &QTabBar::currentChanged, this, &MainWindow::onTabChanged);
@@ -453,6 +453,13 @@ void MainWindow::saveSession()
     m_settings->setValue("session.treeSelected", treeSelected);
     m_settings->setValueInt("session.treeScroll",
                             m_treeView->verticalScrollBar()->value());
+
+    m_settings->setValue("session.windowGeometry",
+                         QString::fromLatin1(saveGeometry().toBase64()));
+    m_settings->setValue("session.mainSplitterState",
+                         QString::fromLatin1(m_mainSplitter->saveState().toBase64()));
+    m_settings->setValue("session.editorSplitterState",
+                         QString::fromLatin1(m_editorSplitter->saveState().toBase64()));
 }
 
 void MainWindow::collectExpandedDirs(const QModelIndex &parent, QStringList &out) const
@@ -469,6 +476,16 @@ void MainWindow::collectExpandedDirs(const QModelIndex &parent, QStringList &out
 
 void MainWindow::restoreSession()
 {
+    QString geom = m_settings->value("session.windowGeometry");
+    if (!geom.isEmpty())
+        restoreGeometry(QByteArray::fromBase64(geom.toLatin1()));
+    QString mainSplit = m_settings->value("session.mainSplitterState");
+    if (!mainSplit.isEmpty())
+        m_mainSplitter->restoreState(QByteArray::fromBase64(mainSplit.toLatin1()));
+    QString editorSplit = m_settings->value("session.editorSplitterState");
+    if (!editorSplit.isEmpty())
+        m_editorSplitter->restoreState(QByteArray::fromBase64(editorSplit.toLatin1()));
+
     QStringList paths = m_settings->valueList("session.openFiles");
     QString activePath = m_settings->value("session.activeFile");
     QJsonObject editorState = m_settings->valueObject("session.editorState");
