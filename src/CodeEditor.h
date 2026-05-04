@@ -4,6 +4,7 @@
 #include <QPlainTextEdit>
 #include <QElapsedTimer>
 #include <QVector>
+#include <QSet>
 #include <QTextCursor>
 #include <QTimer>
 
@@ -17,6 +18,10 @@ public:
 
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth();
+    int foldColumnWidth() const;
+    bool isFoldableLine(int blockNumber) const;
+    bool isLineFolded(int blockNumber) const;
+    void toggleFold(int blockNumber);
 
 signals:
     void zoomRequested(int delta);
@@ -49,6 +54,14 @@ private:
     // Double-Ctrl detection
     QElapsedTimer m_lastCtrlPress;
     bool m_ctrlWasReleased = false;
+
+    // Code folding
+    QSet<int> m_foldedLines;
+    int blockIndentSpaces(const QTextBlock &block) const;
+    int foldRangeEnd(int startBlock) const;
+
+    struct ImportBlock { int start = -1; int end = -1; };
+    ImportBlock findImportBlock() const;
 };
 
 class LineNumberArea : public QWidget {
@@ -63,6 +76,7 @@ protected:
     void paintEvent(QPaintEvent *event) override {
         m_editor->lineNumberAreaPaintEvent(event);
     }
+    void mousePressEvent(QMouseEvent *event) override;
 
 private:
     CodeEditor *m_editor;

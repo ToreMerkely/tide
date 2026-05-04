@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QScrollBar>
 #include <QWheelEvent>
+#include <QMouseEvent>
 
 static const int INDENT_WIDTH = 4;
 static const QString INDENT_STR = QString(INDENT_WIDTH, ' ');
@@ -43,7 +44,160 @@ int CodeEditor::lineNumberAreaWidth()
         ++digits;
     }
     digits = qMax(digits, 3); // minimum 3 digits wide
-    return 8 + fontMetrics().horizontalAdvance('9') * digits;
+    return 8 + fontMetrics().horizontalAdvance('9') * digits + foldColumnWidth();
+}
+
+int CodeEditor::foldColumnWidth() const
+{
+    return 14;
+}
+
+int CodeEditor::blockIndentSpaces(const QTextBlock &block) const
+{
+    QString text = block.text();
+    int spaces = 0;
+    for (QChar c : text) {
+        if (c == ' ') ++spaces;
+        else if (c == '\t') spaces += INDENT_WIDTH;
+        else break;
+    }
+    return spaces;
+}
+
+static bool isImportLine(const QString &text)
+{
+    QString trimmed = text.trimmed();
+    return trimmed.startsWith("import ")
+        || trimmed.startsWith("from ")
+        || trimmed.startsWith("#include");
+}
+
+static int parenDelta(const QString &text)
+{
+    int delta = 0;
+    for (QChar c : text) {
+        if (c == '(' || c == '[') ++delta;
+        else if (c == ')' || c == ']') --delta;
+    }
+    return delta;
+}
+
+CodeEditor::ImportBlock CodeEditor::findImportBlock() const
+{
+    QTextDocument *doc = document();
+    int n = doc->blockCount();
+    int start = -1;
+    int last = -1;
+    int parenDepth = 0;
+
+    for (int i = 0; i < n; ++i) {
+        QTextBlock block = doc->findBlockByNumber(i);
+        QString text = block.text();
+
+        if (parenDepth > 0) {
+            parenDepth += parenDelta(text);
+            last = i;
+            continue;
+        }
+
+        if (text.trimmed().isEmpty())
+            continue;
+
+        if (isImportLine(text)) {
+            if (start == -1) start = i;
+            last = i;
+            parenDepth += parenDelta(text);
+        } else {
+            // First non-import line at depth 0 ends the import region
+            if (start != -1) break;
+            return {-1, -1};
+        }
+    }
+    return {start, last};
+}
+
+bool CodeEditor::isFoldableLine(int blockNumber) const
+{
+    QTextBlock block = document()->findBlockByNumber(blockNumber);
+    if (!block.isValid())
+        return false;
+    if (block.text().trimmed().isEmpty())
+        return false;
+
+    // Import / include region: only the first import line in the block is
+    // foldable, and only if the block spans more than one line.
+    ImportBlock ib = findImportBlock();
+    if (ib.start >= 0 && blockNumber == ib.start)
+        return ib.end > ib.start;
+    if (ib.start >= 0 && blockNumber > ib.start && blockNumber <= ib.end)
+        return false;
+
+    // Indent-based: foldable when next non-blank line is more deeply indented
+    int myIndent = blockIndentSpaces(block);
+    QTextBlock next = block.next();
+    while (next.isValid() && next.text().trimmed().isEmpty())
+        next = next.next();
+    if (!next.isValid())
+        return false;
+    return blockIndentSpaces(next) > myIndent;
+}
+
+bool CodeEditor::isLineFolded(int blockNumber) const
+{
+    return m_foldedLines.contains(blockNumber);
+}
+
+int CodeEditor::foldRangeEnd(int startBlock) const
+{
+    QTextBlock block = document()->findBlockByNumber(startBlock);
+    if (!block.isValid())
+        return startBlock;
+
+    // Import-block fold: cover the entire scanned block including
+    // multi-line "from X import ( ... )" continuations
+    ImportBlock ib = findImportBlock();
+    if (ib.start >= 0 && startBlock == ib.start)
+        return ib.end;
+
+    // Indent-based fold
+    int baseIndent = blockIndentSpaces(block);
+    QTextBlock cur = block.next();
+    int last = startBlock;
+    while (cur.isValid()) {
+        if (cur.text().trimmed().isEmpty()) {
+            last = cur.blockNumber();
+            cur = cur.next();
+            continue;
+        }
+        if (blockIndentSpaces(cur) <= baseIndent)
+            break;
+        last = cur.blockNumber();
+        cur = cur.next();
+    }
+    return last;
+}
+
+void CodeEditor::toggleFold(int blockNumber)
+{
+    if (!isFoldableLine(blockNumber) && !m_foldedLines.contains(blockNumber))
+        return;
+
+    int endLine = foldRangeEnd(blockNumber);
+    bool fold = !m_foldedLines.contains(blockNumber);
+
+    QTextBlock cur = document()->findBlockByNumber(blockNumber + 1);
+    while (cur.isValid() && cur.blockNumber() <= endLine) {
+        cur.setVisible(!fold);
+        cur = cur.next();
+    }
+    if (fold)
+        m_foldedLines.insert(blockNumber);
+    else
+        m_foldedLines.remove(blockNumber);
+
+    document()->markContentsDirty(0, document()->characterCount());
+    viewport()->update();
+    m_lineNumberArea->update();
 }
 
 void CodeEditor::updateLineNumberAreaWidth(int)
@@ -97,6 +251,10 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
     QPainter painter(m_lineNumberArea);
     painter.fillRect(event->rect(), QColor(0x31, 0x33, 0x35));
 
+    const int foldW = foldColumnWidth();
+    const int areaW = m_lineNumberArea->width();
+    const int numbersRight = areaW - foldW;
+
     QTextBlock block = firstVisibleBlock();
     int blockNumber = block.blockNumber();
     int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
@@ -106,8 +264,17 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
         if (block.isVisible() && bottom >= event->rect().top()) {
             QString number = QString::number(blockNumber + 1);
             painter.setPen(QColor(0x60, 0x63, 0x66));
-            painter.drawText(0, top, m_lineNumberArea->width() - 4,
+            painter.drawText(0, top, numbersRight - 4,
                              fontMetrics().height(), Qt::AlignRight, number);
+
+            bool folded = m_foldedLines.contains(blockNumber);
+            if (folded || isFoldableLine(blockNumber)) {
+                painter.setPen(QColor(0x88, 0x8C, 0x90));
+                QString marker = folded ? QStringLiteral("▸")
+                                        : QStringLiteral("▾");
+                painter.drawText(numbersRight, top, foldW,
+                                 fontMetrics().height(), Qt::AlignCenter, marker);
+            }
         }
 
         block = block.next();
@@ -115,6 +282,24 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
         bottom = top + qRound(blockBoundingRect(block).height());
         ++blockNumber;
     }
+}
+
+void LineNumberArea::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+    int foldStart = m_editor->lineNumberAreaWidth() - m_editor->foldColumnWidth();
+    if (event->pos().x() < foldStart) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+    QPoint p(0, event->pos().y());
+    QTextCursor cursor = m_editor->cursorForPosition(p);
+    int blockNumber = cursor.blockNumber();
+    if (m_editor->isFoldableLine(blockNumber) || m_editor->isLineFolded(blockNumber))
+        m_editor->toggleFold(blockNumber);
 }
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
