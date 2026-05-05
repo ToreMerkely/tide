@@ -565,6 +565,11 @@ void CodeEditor::paintEvent(QPaintEvent *event)
         const int charWidth = fontMetrics().horizontalAdvance(' ');
         const int xOff = qRound(contentOffset().x());
 
+        // Avoid overpainting the text cursor at indent boundaries
+        const int cursorBlockNum = textCursor().blockNumber();
+        const QRect cRect = cursorRect();
+        const int cursorX = cRect.x();
+
         QTextBlock block = firstVisibleBlock();
         while (block.isValid()) {
             QRectF g = blockBoundingGeometry(block).translated(contentOffset());
@@ -586,8 +591,11 @@ void CodeEditor::paintEvent(QPaintEvent *event)
                     leading = leadingIndentSpaces(text);
                 }
                 int levels = leading / INDENT_WIDTH;
+                bool isCursorRow = (block.blockNumber() == cursorBlockNum);
                 for (int level = 0; level < levels; ++level) {
                     int x = level * INDENT_WIDTH * charWidth + xOff;
+                    if (isCursorRow && qAbs(x - cursorX) <= 1)
+                        continue;
                     painter.drawLine(x, top, x, bottom);
                 }
             }
