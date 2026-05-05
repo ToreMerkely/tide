@@ -26,6 +26,10 @@ add_executable(tide
     src/HtmlHighlighter.cpp
     src/CssHighlighter.cpp
     src/JsHighlighter.cpp
+    src/ConfigHighlighter.cpp
+    src/GherkinHighlighter.cpp
+    src/DockerfileHighlighter.cpp
+    src/TerraformHighlighter.cpp
     src/EditorGroup.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp

@@ -9,6 +9,10 @@
 #include "HtmlHighlighter.h"
 #include "CssHighlighter.h"
 #include "JsHighlighter.h"
+#include "ConfigHighlighter.h"
+#include "GherkinHighlighter.h"
+#include "DockerfileHighlighter.h"
+#include "TerraformHighlighter.h"
 #include "EditorGroup.h"
 #include "LspClient.h"
 #include "SearchBar.h"
@@ -1188,6 +1192,16 @@ void MainWindow::loadFile(const QString &path, int line)
         new JsHighlighter(editor->document(), JsHighlighter::TypeScript);
     } else if (isJsFile(suffix)) {
         new JsHighlighter(editor->document(), JsHighlighter::JavaScript);
+    } else if (isXmlFile(suffix)) {
+        new HtmlHighlighter(editor->document());
+    } else if (isDockerfile(fileName, suffix)) {
+        new DockerfileHighlighter(editor->document());
+    } else if (isTerraformFile(suffix)) {
+        new TerraformHighlighter(editor->document());
+    } else if (isGherkinFile(suffix)) {
+        new GherkinHighlighter(editor->document());
+    } else if (isConfigFile(fileName, suffix)) {
+        new ConfigHighlighter(editor->document());
     } else if (isYamlFile(suffix)) {
         new YamlHighlighter(editor->document());
     } else if (isShellFile(suffix) || (suffix.isEmpty() && isShellByShebang(content))) {
@@ -1659,6 +1673,45 @@ bool MainWindow::isJsFile(const QString &suffix)
 bool MainWindow::isTsFile(const QString &suffix)
 {
     return suffix == "ts" || suffix == "tsx";
+}
+
+bool MainWindow::isXmlFile(const QString &suffix)
+{
+    return suffix == "xml" || suffix == "svg" || suffix == "xsd"
+        || suffix == "xsl" || suffix == "plist";
+}
+
+bool MainWindow::isConfigFile(const QString &fileName, const QString &suffix)
+{
+    if (suffix == "env" || suffix == "toml" || suffix == "ini"
+        || suffix == "cfg" || suffix == "conf" || suffix == "properties")
+        return true;
+    if (fileName.startsWith(".env"))
+        return true;
+    if (fileName.compare(".gitignore", Qt::CaseInsensitive) == 0
+        || fileName.compare(".gitattributes", Qt::CaseInsensitive) == 0
+        || fileName.compare(".dockerignore", Qt::CaseInsensitive) == 0
+        || fileName.compare(".editorconfig", Qt::CaseInsensitive) == 0)
+        return true;
+    return false;
+}
+
+bool MainWindow::isGherkinFile(const QString &suffix)
+{
+    return suffix == "feature";
+}
+
+bool MainWindow::isDockerfile(const QString &fileName, const QString &suffix)
+{
+    return fileName.compare("Dockerfile", Qt::CaseInsensitive) == 0
+        || fileName.startsWith("Dockerfile.", Qt::CaseInsensitive)
+        || fileName.endsWith(".Dockerfile", Qt::CaseInsensitive)
+        || suffix.compare("dockerfile", Qt::CaseInsensitive) == 0;
+}
+
+bool MainWindow::isTerraformFile(const QString &suffix)
+{
+    return suffix == "tf" || suffix == "tfvars" || suffix == "hcl";
 }
 
 void MainWindow::setMarkdownMode(const QString &mode)

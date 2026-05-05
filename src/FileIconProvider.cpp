@@ -30,6 +30,12 @@ QIcon FileIconProvider::icon(const QFileInfo &info) const
         || name.compare("GNUmakefile", Qt::CaseInsensitive) == 0
         || suffix == "mk")
         return QIcon(":/icons/icons/makefile.svg");
+    if (name.compare("Dockerfile", Qt::CaseInsensitive) == 0
+        || name.startsWith("Dockerfile.", Qt::CaseInsensitive)
+        || name.endsWith(".Dockerfile", Qt::CaseInsensitive))
+        return QIcon(":/icons/icons/dockerfile.svg");
+    if (name.startsWith(".env"))
+        return QIcon(":/icons/icons/env.svg");
     if (name.startsWith(".git"))
         return QIcon(":/icons/icons/git.svg");
 
@@ -58,6 +64,16 @@ QIcon FileIconProvider::icon(const QFileInfo &info) const
         return QIcon(":/icons/icons/javascript.svg");
     if (suffix == "ts" || suffix == "tsx")
         return QIcon(":/icons/icons/typescript.svg");
+    if (suffix == "xml" || suffix == "svg" || suffix == "xsd"
+        || suffix == "xsl" || suffix == "plist")
+        return QIcon(":/icons/icons/xml.svg");
+    if (suffix == "toml" || suffix == "ini" || suffix == "cfg"
+        || suffix == "conf" || suffix == "properties")
+        return QIcon(":/icons/icons/toml.svg");
+    if (suffix == "tf" || suffix == "tfvars" || suffix == "hcl")
+        return QIcon(":/icons/icons/terraform.svg");
+    if (suffix == "feature")
+        return QIcon(":/icons/icons/feature.svg");
 
     return QIcon(":/icons/icons/text.svg");
 }

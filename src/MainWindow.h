@@ -78,6 +78,11 @@ private:
     static bool isCssFile(const QString &suffix);
     static bool isJsFile(const QString &suffix);
     static bool isTsFile(const QString &suffix);
+    static bool isXmlFile(const QString &suffix);
+    static bool isConfigFile(const QString &fileName, const QString &suffix);
+    static bool isGherkinFile(const QString &suffix);
+    static bool isDockerfile(const QString &fileName, const QString &suffix);
+    static bool isTerraformFile(const QString &suffix);
 
     void applyMarkdownMode();
     void renderMarkdownPreview();

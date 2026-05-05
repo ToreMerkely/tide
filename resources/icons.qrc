@@ -22,5 +22,11 @@
         <file>icons/css.svg</file>
         <file>icons/javascript.svg</file>
         <file>icons/typescript.svg</file>
+        <file>icons/xml.svg</file>
+        <file>icons/env.svg</file>
+        <file>icons/dockerfile.svg</file>
+        <file>icons/terraform.svg</file>
+        <file>icons/toml.svg</file>
+        <file>icons/feature.svg</file>
     </qresource>
 </RCC>
