@@ -50,6 +50,14 @@ QIcon FileIconProvider::icon(const QFileInfo &info) const
         return QIcon(":/icons/icons/yaml.svg");
     if (suffix == "sh" || suffix == "bash" || suffix == "zsh")
         return QIcon(":/icons/icons/shell.svg");
+    if (suffix == "html" || suffix == "htm" || suffix == "xhtml")
+        return QIcon(":/icons/icons/html.svg");
+    if (suffix == "css" || suffix == "scss" || suffix == "sass" || suffix == "less")
+        return QIcon(":/icons/icons/css.svg");
+    if (suffix == "js" || suffix == "mjs" || suffix == "cjs" || suffix == "jsx")
+        return QIcon(":/icons/icons/javascript.svg");
+    if (suffix == "ts" || suffix == "tsx")
+        return QIcon(":/icons/icons/typescript.svg");
 
     return QIcon(":/icons/icons/text.svg");
 }

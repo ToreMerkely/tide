@@ -6,6 +6,9 @@
 #include "ShellHighlighter.h"
 #include "MakefileHighlighter.h"
 #include "MarkdownHighlighter.h"
+#include "HtmlHighlighter.h"
+#include "CssHighlighter.h"
+#include "JsHighlighter.h"
 #include "EditorGroup.h"
 #include "LspClient.h"
 #include "SearchBar.h"
@@ -1177,6 +1180,14 @@ void MainWindow::loadFile(const QString &path, int line)
         new JsonHighlighter(editor->document());
     } else if (isMarkdownFile(suffix)) {
         new MarkdownHighlighter(editor->document());
+    } else if (isHtmlFile(suffix)) {
+        new HtmlHighlighter(editor->document());
+    } else if (isCssFile(suffix)) {
+        new CssHighlighter(editor->document());
+    } else if (isTsFile(suffix)) {
+        new JsHighlighter(editor->document(), JsHighlighter::TypeScript);
+    } else if (isJsFile(suffix)) {
+        new JsHighlighter(editor->document(), JsHighlighter::JavaScript);
     } else if (isYamlFile(suffix)) {
         new YamlHighlighter(editor->document());
     } else if (isShellFile(suffix) || (suffix.isEmpty() && isShellByShebang(content))) {
@@ -1628,6 +1639,26 @@ bool MainWindow::isMakefile(const QString &fileName, const QString &suffix)
 bool MainWindow::isMarkdownFile(const QString &suffix)
 {
     return suffix == "md" || suffix == "markdown";
+}
+
+bool MainWindow::isHtmlFile(const QString &suffix)
+{
+    return suffix == "html" || suffix == "htm" || suffix == "xhtml";
+}
+
+bool MainWindow::isCssFile(const QString &suffix)
+{
+    return suffix == "css" || suffix == "scss" || suffix == "sass" || suffix == "less";
+}
+
+bool MainWindow::isJsFile(const QString &suffix)
+{
+    return suffix == "js" || suffix == "mjs" || suffix == "cjs" || suffix == "jsx";
+}
+
+bool MainWindow::isTsFile(const QString &suffix)
+{
+    return suffix == "ts" || suffix == "tsx";
 }
 
 void MainWindow::setMarkdownMode(const QString &mode)

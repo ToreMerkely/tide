@@ -23,6 +23,9 @@ add_executable(tide
     src/ShellHighlighter.cpp
     src/MakefileHighlighter.cpp
     src/MarkdownHighlighter.cpp
+    src/HtmlHighlighter.cpp
+    src/CssHighlighter.cpp
+    src/JsHighlighter.cpp
     src/EditorGroup.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp

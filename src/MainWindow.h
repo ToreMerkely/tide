@@ -74,6 +74,10 @@ private:
     static bool isShellFile(const QString &suffix);
     static bool isMakefile(const QString &fileName, const QString &suffix);
     static bool isMarkdownFile(const QString &suffix);
+    static bool isHtmlFile(const QString &suffix);
+    static bool isCssFile(const QString &suffix);
+    static bool isJsFile(const QString &suffix);
+    static bool isTsFile(const QString &suffix);
 
     void applyMarkdownMode();
     void renderMarkdownPreview();

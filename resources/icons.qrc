@@ -18,5 +18,9 @@
         <file>icons/view-split.svg</file>
         <file>icons/view-preview.svg</file>
         <file>icons/select-file.svg</file>
+        <file>icons/html.svg</file>
+        <file>icons/css.svg</file>
+        <file>icons/javascript.svg</file>
+        <file>icons/typescript.svg</file>
     </qresource>
 </RCC>
