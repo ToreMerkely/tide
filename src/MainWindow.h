@@ -49,6 +49,8 @@ private slots:
     void showTabContextMenu(const QPoint &pos);
     void onEditorZoom(int delta);
     void revealCurrentFileInTree();
+    void showTreeContextMenu(const QPoint &pos);
+    void openInOtherSplit(const QString &path);
 
 private:
     struct NavLocation {
@@ -95,6 +97,7 @@ private:
     void setupGroup(EditorGroup *group);
     void splitRight();
     void closeSplit();
+    void removeGroup(EditorGroup *group);
     EditorGroup *findGroupForPath(const QString &path) const;
     QFileSystemModel *m_fileModel;
     // (was m_openFiles cache; now derived by walking groups via findGroupForPath)

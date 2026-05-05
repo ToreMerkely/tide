@@ -334,6 +334,9 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_mainSplitter);
 
     connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
+    m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_treeView, &QWidget::customContextMenuRequested,
+            this, &MainWindow::showTreeContextMenu);
 
     auto *prevTab = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp), this);
     connect(prevTab, &QShortcut::activated, this, [this]() {
@@ -891,7 +894,7 @@ void MainWindow::closeTab(int index)
     }
 
     if (m_activeGroup->count() == 0 && m_groups.size() > 1)
-        closeSplit();
+        removeGroup(m_activeGroup);
 }
 
 void MainWindow::showTabContextMenu(const QPoint &pos)
@@ -907,48 +910,54 @@ void MainWindow::showTabContextMenu(const QPoint &pos)
 
     QMenu menu(this);
     QAction *copyAction = menu.addAction("Copy Path");
-    QAction *moveAction = nullptr;
-    QAction *showAction = nullptr;
-    if (m_groups.size() > 1) {
-        moveAction = menu.addAction("Move to Other Split");
-        showAction = menu.addAction("Show in Other Split");
-    }
+    QAction *moveAction = menu.addAction("Move to Other Split");
+    QAction *showAction = menu.addAction("Show in Other Split");
     QAction *chosen = menu.exec(bar->mapToGlobal(pos));
+    if (chosen == nullptr)
+        return;
+
+    auto otherGroupOf = [this](EditorGroup *src) -> EditorGroup * {
+        for (EditorGroup *g : m_groups)
+            if (g != src) return g;
+        return nullptr;
+    };
+
     if (chosen == copyAction) {
         QApplication::clipboard()->setText(path);
-    } else if (moveAction && chosen == moveAction) {
+    } else if (chosen == moveAction) {
         EditorGroup *src = m_activeGroup;
-        EditorGroup *dst = nullptr;
-        for (EditorGroup *g : m_groups) {
-            if (g != src) { dst = g; break; }
-        }
+        if (m_groups.size() == 1)
+            splitRight();
+        EditorGroup *dst = otherGroupOf(src);
         if (!dst)
             return;
-        QWidget *w = src->widget(index);
+        int srcIdx = src->indexOfPath(path);
+        QWidget *w = (srcIdx >= 0) ? src->widget(srcIdx) : nullptr;
         if (!w)
             return;
-        QString label = src->tabText(index);
-        src->tabBar()->removeTab(index);
+        QString label = src->tabText(srcIdx);
+        src->tabBar()->removeTab(srcIdx);
         src->pageStack()->removeWidget(w);
         int newIdx = dst->addTab(w, label);
         if (m_activeGroup) m_activeGroup->setActiveLook(false);
         m_activeGroup = dst;
         dst->setActiveLook(true);
         dst->setCurrentIndex(newIdx);
-    } else if (showAction && chosen == showAction) {
+    } else if (chosen == showAction) {
         EditorGroup *src = m_activeGroup;
-        EditorGroup *dst = nullptr;
-        for (EditorGroup *g : m_groups) {
-            if (g != src) { dst = g; break; }
-        }
-        if (!dst)
-            return;
-        auto *srcEditor = qobject_cast<CodeEditor *>(src->widget(index));
+        int srcIdx = src->indexOfPath(path);
+        auto *srcEditor = qobject_cast<CodeEditor *>(
+            srcIdx >= 0 ? src->widget(srcIdx) : nullptr);
         if (!srcEditor)
             return;
         QTextDocument *doc = srcEditor->document();
-        // Reparent doc to MainWindow so it survives if either editor is closed.
         doc->setParent(this);
+
+        if (m_groups.size() == 1)
+            splitRight();
+        EditorGroup *dst = otherGroupOf(src);
+        if (!dst)
+            return;
 
         auto *editor = new CodeEditor;
         editor->setDocument(doc);
@@ -1266,18 +1275,46 @@ void MainWindow::closeSplit()
 {
     if (m_groups.size() <= 1)
         return;
-    EditorGroup *toClose = m_groups.last();
-    EditorGroup *survivor = m_groups.first();
+    removeGroup(m_groups.last());
+}
 
-    // Close all tabs in toClose
-    while (toClose->count() > 0)
-        toClose->removeTab(0);
-    m_groups.removeOne(toClose);
-    toClose->setParent(nullptr);
-    toClose->deleteLater();
-    m_activeGroup = survivor;
-    survivor->setActiveLook(true);
-    survivor->setUnderlineVisible(false);
+void MainWindow::removeGroup(EditorGroup *group)
+{
+    if (!group || m_groups.size() <= 1 || !m_groups.contains(group))
+        return;
+
+    // If this group's tab bar is currently on loan to the markdown preview
+    // holder, return it before destruction so it gets cleaned up with the
+    // group instead of orphaned in the holder.
+    if (m_previewBorrowedFrom == group) {
+        qobject_cast<QBoxLayout *>(m_previewTabHolder->layout())
+            ->removeWidget(group->tabBar());
+        group->attachTabBar();
+        m_previewBorrowedFrom = nullptr;
+        m_previewTabHolder->hide();
+        m_groupSplitter->show();
+    }
+
+    EditorGroup *survivor = nullptr;
+    for (EditorGroup *g : m_groups) {
+        if (g != group) { survivor = g; break; }
+    }
+
+    while (group->count() > 0)
+        group->removeTab(0);
+
+    m_groups.removeOne(group);
+    group->setParent(nullptr);
+    group->deleteLater();
+
+    if (survivor) {
+        m_activeGroup = survivor;
+        survivor->setActiveLook(true);
+        survivor->setUnderlineVisible(false);
+        // Make sure md mode / preview state / path bar all reflect the
+        // survivor's active tab, since no currentChanged signal fired.
+        onTabChanged(survivor->currentIndex());
+    }
     updateSplitActions();
 }
 
@@ -1657,6 +1694,48 @@ void MainWindow::applyMarkdownMode()
         returnBorrowedTabBar();
         renderMarkdownPreview();
     }
+}
+
+void MainWindow::showTreeContextMenu(const QPoint &pos)
+{
+    QModelIndex idx = m_treeView->indexAt(pos);
+    if (!idx.isValid())
+        return;
+    QString path = m_fileModel->filePath(idx);
+    bool isDir = m_fileModel->isDir(idx);
+
+    QMenu menu(this);
+    QAction *openAct = isDir ? nullptr : menu.addAction("Open");
+    QAction *splitAct = isDir ? nullptr : menu.addAction("Open in Other Split");
+    QAction *copyAct = menu.addAction("Copy Path");
+
+    QAction *chosen = menu.exec(m_treeView->viewport()->mapToGlobal(pos));
+    if (chosen == nullptr)
+        return;
+    if (chosen == openAct)
+        loadFile(path);
+    else if (chosen == splitAct)
+        openInOtherSplit(path);
+    else if (chosen == copyAct)
+        QApplication::clipboard()->setText(path);
+}
+
+void MainWindow::openInOtherSplit(const QString &path)
+{
+    if (m_groups.size() == 1) {
+        splitRight();
+        // After splitRight, the new group is active and empty.
+    } else {
+        for (EditorGroup *g : m_groups) {
+            if (g != m_activeGroup) {
+                if (m_activeGroup) m_activeGroup->setActiveLook(false);
+                m_activeGroup = g;
+                g->setActiveLook(true);
+                break;
+            }
+        }
+    }
+    loadFile(path);
 }
 
 void MainWindow::revealCurrentFileInTree()
