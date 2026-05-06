@@ -28,5 +28,6 @@
         <file>icons/terraform.svg</file>
         <file>icons/toml.svg</file>
         <file>icons/feature.svg</file>
+        <file>icons/go.svg</file>
     </qresource>
 </RCC>

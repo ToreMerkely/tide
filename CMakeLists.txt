@@ -30,6 +30,7 @@ add_executable(tide
     src/GherkinHighlighter.cpp
     src/DockerfileHighlighter.cpp
     src/TerraformHighlighter.cpp
+    src/GoHighlighter.cpp
     src/EditorGroup.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp

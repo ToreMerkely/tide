@@ -83,6 +83,8 @@ private:
     static bool isGherkinFile(const QString &suffix);
     static bool isDockerfile(const QString &fileName, const QString &suffix);
     static bool isTerraformFile(const QString &suffix);
+    static bool isGoFile(const QString &fileName, const QString &suffix);
+    void ensureGoLsp();
 
     void applyMarkdownMode();
     void renderMarkdownPreview();
@@ -112,6 +114,8 @@ private:
     // (was m_openFiles cache; now derived by walking groups via findGroupForPath)
     LspClient *m_cppLsp;
     LspClient *m_pyLsp;
+    LspClient *m_goLsp = nullptr;
+    bool m_goLspPromptShown = false;
     SearchBar *m_searchBar;
     QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;

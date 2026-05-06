@@ -13,6 +13,7 @@
 #include "GherkinHighlighter.h"
 #include "DockerfileHighlighter.h"
 #include "TerraformHighlighter.h"
+#include "GoHighlighter.h"
 #include "EditorGroup.h"
 #include "LspClient.h"
 #include "SearchBar.h"
@@ -90,6 +91,49 @@ static QString findJediLsp(const QString &rootPath, Settings *settings)
         return BIN;
 
     return {};
+}
+
+static QString findGopls(const QString &rootPath, Settings *settings)
+{
+    Q_UNUSED(rootPath);
+    QString saved = settings->value("gopls_path");
+    if (!saved.isEmpty() && QFile::exists(saved))
+        return saved;
+
+    QProcess which;
+    which.start("which", {"gopls"});
+    if (which.waitForFinished(2000) && which.exitCode() == 0)
+        return "gopls";
+
+    QString home = qEnvironmentVariable("HOME");
+    QString gopath = qEnvironmentVariable("GOPATH");
+    QString gobin = qEnvironmentVariable("GOBIN");
+    QStringList candidates;
+    if (!gobin.isEmpty())
+        candidates << gobin + "/gopls";
+    if (!gopath.isEmpty())
+        candidates << gopath + "/bin/gopls";
+    if (!home.isEmpty())
+        candidates << home + "/go/bin/gopls";
+    for (const QString &c : candidates) {
+        if (QFile::exists(c))
+            return c;
+    }
+    return {};
+}
+
+// Walk up from `path` looking for a directory containing go.mod; returns
+// the directory of the closest go.mod or an empty string if none found.
+static QString findGoModRoot(const QString &startPath)
+{
+    QFileInfo info(startPath);
+    QDir dir = info.isDir() ? QDir(info.absoluteFilePath()) : info.absoluteDir();
+    while (true) {
+        if (QFile::exists(dir.filePath("go.mod")))
+            return dir.absolutePath();
+        if (!dir.cdUp())
+            return {};
+    }
 }
 
 static bool isShellByShebang(const QString &content)
@@ -1198,6 +1242,15 @@ void MainWindow::loadFile(const QString &path, int line)
         new DockerfileHighlighter(editor->document());
     } else if (isTerraformFile(suffix)) {
         new TerraformHighlighter(editor->document());
+    } else if (isGoFile(fileName, suffix)) {
+        new GoHighlighter(editor->document());
+        ensureGoLsp();
+        if (m_goLsp && m_goLsp->isRunning()) {
+            m_goLsp->didOpen(path, content, "go");
+            QTimer::singleShot(1000, this, [this, path, editor]() {
+                requestSemanticHighlight(path, editor);
+            });
+        }
     } else if (isGherkinFile(suffix)) {
         new GherkinHighlighter(editor->document());
     } else if (isConfigFile(fileName, suffix)) {
@@ -1441,6 +1494,97 @@ void MainWindow::requestSemanticHighlight(const QString &path, CodeEditor *edito
     });
 }
 
+void MainWindow::ensureGoLsp()
+{
+    if (m_goLsp && m_goLsp->isRunning())
+        return;
+    if (m_goLspPromptShown)
+        return;
+
+    QString rootPath = QDir::currentPath();
+    auto startWith = [this, rootPath](const QString &binPath) {
+        // Use the nearest go.mod ancestor as the workspace root if there is
+        // one; otherwise fall back to the application's working directory.
+        QString workRoot = findGoModRoot(rootPath);
+        if (workRoot.isEmpty())
+            workRoot = rootPath;
+        m_goLsp = new LspClient(binPath, {}, workRoot, this);
+        m_goLsp->start();
+    };
+
+    QString gopls = findGopls(rootPath, m_settings);
+    if (!gopls.isEmpty()) {
+        startWith(gopls);
+        return;
+    }
+
+    QMessageBox box(this);
+    box.setWindowTitle("Go Language Server");
+    box.setText("No Go language server (gopls) was found.\n\n"
+                "You can install it with `go install golang.org/x/tools/gopls@latest`,\n"
+                "browse for an existing binary, or skip and use highlighting only.");
+    box.setMinimumWidth(520);
+    QAbstractButton *installBtn = box.addButton("  Install  ", QMessageBox::ActionRole);
+    QAbstractButton *browseBtn  = box.addButton("  Browse...  ", QMessageBox::ActionRole);
+    QAbstractButton *skipBtn    = box.addButton("  Skip  ",   QMessageBox::RejectRole);
+    box.exec();
+
+    if (box.clickedButton() == skipBtn) {
+        m_goLspPromptShown = true;
+        return;
+    }
+
+    if (box.clickedButton() == installBtn) {
+        m_goLspPromptShown = true;
+        auto *proc = new QProcess(this);
+        proc->setWorkingDirectory(rootPath);
+        connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this, proc, startWith](int exitCode, QProcess::ExitStatus) {
+            proc->deleteLater();
+            if (exitCode != 0) {
+                statusBar()->showMessage("gopls install failed (is `go` on PATH?)", 5000);
+                return;
+            }
+            QString gopls = findGopls(QDir::currentPath(), m_settings);
+            if (gopls.isEmpty()) {
+                statusBar()->showMessage("gopls installed but binary not found", 5000);
+                return;
+            }
+            startWith(gopls);
+            // Send didOpen for any already-open Go files
+            for (EditorGroup *g : m_groups) {
+                for (int i = 0; i < g->count(); ++i) {
+                    QWidget *w = g->widget(i);
+                    QString p = w ? w->property("filePath").toString() : QString();
+                    if (QFileInfo(p).suffix() == "go") {
+                        auto *ed = qobject_cast<CodeEditor *>(w);
+                        if (ed)
+                            m_goLsp->didOpen(p, ed->toPlainText(), "go");
+                    }
+                }
+            }
+        });
+        proc->start("go", {"install", "golang.org/x/tools/gopls@latest"});
+        return;
+    }
+
+    if (box.clickedButton() == browseBtn) {
+        QString file = QFileDialog::getOpenFileName(
+            this, "Select gopls binary",
+            qEnvironmentVariable("HOME") + "/go/bin");
+        if (file.isEmpty())
+            return;
+        if (!QFileInfo(file).isExecutable()) {
+            QMessageBox::warning(this, "Not executable",
+                "The selected file is not executable.");
+            return;
+        }
+        m_goLspPromptShown = true;
+        m_settings->setValue("gopls_path", file);
+        startWith(file);
+    }
+}
+
 void MainWindow::ensurePythonLsp()
 {
     if (m_pyLsp && m_pyLsp->isRunning())
@@ -1614,6 +1758,8 @@ LspClient *MainWindow::lspForFile(const QString &path) const
         return m_cppLsp;
     if (isPythonFile(suffix))
         return m_pyLsp;
+    if (suffix == "go")
+        return m_goLsp;
     return nullptr;
 }
 
@@ -1691,7 +1837,9 @@ bool MainWindow::isConfigFile(const QString &fileName, const QString &suffix)
     if (fileName.compare(".gitignore", Qt::CaseInsensitive) == 0
         || fileName.compare(".gitattributes", Qt::CaseInsensitive) == 0
         || fileName.compare(".dockerignore", Qt::CaseInsensitive) == 0
-        || fileName.compare(".editorconfig", Qt::CaseInsensitive) == 0)
+        || fileName.compare(".editorconfig", Qt::CaseInsensitive) == 0
+        || fileName.compare("go.mod", Qt::CaseInsensitive) == 0
+        || fileName.compare("go.sum", Qt::CaseInsensitive) == 0)
         return true;
     return false;
 }
@@ -1712,6 +1860,12 @@ bool MainWindow::isDockerfile(const QString &fileName, const QString &suffix)
 bool MainWindow::isTerraformFile(const QString &suffix)
 {
     return suffix == "tf" || suffix == "tfvars" || suffix == "hcl";
+}
+
+bool MainWindow::isGoFile(const QString &fileName, const QString &suffix)
+{
+    Q_UNUSED(fileName);
+    return suffix == "go";
 }
 
 void MainWindow::setMarkdownMode(const QString &mode)

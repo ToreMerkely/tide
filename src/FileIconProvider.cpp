@@ -74,6 +74,9 @@ QIcon FileIconProvider::icon(const QFileInfo &info) const
         return QIcon(":/icons/icons/terraform.svg");
     if (suffix == "feature")
         return QIcon(":/icons/icons/feature.svg");
+    if (suffix == "go" || name.compare("go.mod", Qt::CaseInsensitive) == 0
+        || name.compare("go.sum", Qt::CaseInsensitive) == 0)
+        return QIcon(":/icons/icons/go.svg");
 
     return QIcon(":/icons/icons/text.svg");
 }
