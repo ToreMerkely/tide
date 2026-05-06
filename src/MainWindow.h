@@ -15,6 +15,7 @@ class QTextBrowser;
 class QSplitter;
 class QAction;
 class QToolButton;
+class QFileSystemWatcher;
 
 class QTreeView;
 class CodeEditor;
@@ -46,6 +47,7 @@ private slots:
     void showSymbolSearch();
     void saveAll();
     void onEditorModified();
+    void onFileChangedOnDisk(const QString &path);
     void showTabContextMenu(const QPoint &pos);
     void onEditorZoom(int delta);
     void revealCurrentFileInTree();
@@ -116,6 +118,7 @@ private:
     LspClient *m_pyLsp;
     LspClient *m_goLsp = nullptr;
     bool m_goLspPromptShown = false;
+    QFileSystemWatcher *m_fileWatcher = nullptr;
     SearchBar *m_searchBar;
     QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;

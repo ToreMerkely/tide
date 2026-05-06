@@ -55,6 +55,7 @@
 #include <QClipboard>
 #include <QToolButton>
 #include <QWheelEvent>
+#include <QFileSystemWatcher>
 #include <QTextBrowser>
 #include <QActionGroup>
 #include <QTextTable>
@@ -385,6 +386,7 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_mainSplitter);
 
     connect(m_treeView, &QTreeView::doubleClicked, this, &MainWindow::openFile);
+    m_treeView->installEventFilter(this);
     m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_treeView, &QWidget::customContextMenuRequested,
             this, &MainWindow::showTreeContextMenu);
@@ -439,6 +441,13 @@ MainWindow::MainWindow(QWidget *parent)
     auto *fileSearchShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N), this);
     connect(fileSearchShortcut, &QShortcut::activated, this, &MainWindow::showFileSearch);
 
+    auto *zoomIn1 = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus), this);
+    auto *zoomIn2 = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Equal), this);
+    auto *zoomOut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus), this);
+    connect(zoomIn1, &QShortcut::activated, this, [this]() { onEditorZoom(+1); });
+    connect(zoomIn2, &QShortcut::activated, this, [this]() { onEditorZoom(+1); });
+    connect(zoomOut, &QShortcut::activated, this, [this]() { onEditorZoom(-1); });
+
     // Start C++ LSP
     QString root = QDir::currentPath();
     m_cppLsp = new LspClient("clangd", {"--compile-commands-dir=" + root}, root, this);
@@ -451,6 +460,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_autoSaveTimer->setSingleShot(true);
     m_autoSaveTimer->setInterval(3000);
     connect(m_autoSaveTimer, &QTimer::timeout, this, &MainWindow::saveAll);
+
+    m_fileWatcher = new QFileSystemWatcher(this);
+    connect(m_fileWatcher, &QFileSystemWatcher::fileChanged,
+            this, &MainWindow::onFileChangedOnDisk);
 
     connect(m_fileModel, &QFileSystemModel::directoryLoaded,
             this, &MainWindow::onDirectoryLoaded);
@@ -711,6 +724,21 @@ void MainWindow::onDirectoryLoaded(const QString &path)
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_treeView && event->type() == QEvent::KeyPress) {
+        auto *ke = static_cast<QKeyEvent *>(event);
+        if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+            QModelIndex idx = m_treeView->currentIndex();
+            if (idx.isValid()) {
+                if (m_fileModel->isDir(idx)) {
+                    m_treeView->setExpanded(idx, !m_treeView->isExpanded(idx));
+                } else {
+                    openFile(idx);
+                }
+                return true;
+            }
+        }
+    }
+
     if (obj == m_treeView->viewport() && event->type() == QEvent::Wheel) {
         auto *wheel = static_cast<QWheelEvent *>(event);
         if (wheel->modifiers() & Qt::ControlModifier) {
@@ -821,6 +849,76 @@ void MainWindow::onEditorModified()
         m_mdRenderTimer->start();
 }
 
+void MainWindow::onFileChangedOnDisk(const QString &path)
+{
+    // Some editors replace the file on save; the watcher may stop watching
+    // it. Re-add (deferred so the FS settles).
+    QTimer::singleShot(0, this, [this, path]() {
+        if (m_fileWatcher && !m_fileWatcher->files().contains(path)
+            && QFile::exists(path)) {
+            m_fileWatcher->addPath(path);
+        }
+    });
+
+    if (!QFile::exists(path))
+        return; // deleted/moved — leave the buffer alone
+
+    // Collect all editors in any group that have this path open
+    struct State { CodeEditor *editor; int line; int col; int scroll; };
+    QList<State> states;
+    for (EditorGroup *g : m_groups) {
+        int idx = g->indexOfPath(path);
+        if (idx < 0) continue;
+        if (auto *e = qobject_cast<CodeEditor *>(g->widget(idx))) {
+            states.append({e,
+                           e->textCursor().blockNumber(),
+                           e->textCursor().columnNumber(),
+                           e->verticalScrollBar()->value()});
+        }
+    }
+    if (states.isEmpty())
+        return;
+
+    // Read disk content
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    QString diskContent = QTextStream(&f).readAll();
+
+    QTextDocument *doc = states.first().editor->document();
+    if (doc->toPlainText() == diskContent)
+        return; // matches what we already have (probably our own save)
+
+    if (doc->isModified()) {
+        QString name = QFileInfo(path).fileName();
+        auto answer = QMessageBox::question(this,
+            "File Changed on Disk",
+            QString("%1 has been modified outside the editor.\n\n"
+                    "You have unsaved changes. Reload from disk and discard them?").arg(name),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes)
+            return;
+    }
+
+    doc->setPlainText(diskContent);
+    doc->setModified(false);
+
+    for (const State &s : states) {
+        QTextBlock block = s.editor->document()->findBlockByNumber(s.line);
+        if (block.isValid()) {
+            QTextCursor c(block);
+            c.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor,
+                           qMin(s.col, block.length() - 1));
+            s.editor->setTextCursor(c);
+        }
+        int scroll = s.scroll;
+        CodeEditor *e = s.editor;
+        QTimer::singleShot(0, e, [e, scroll]() {
+            e->verticalScrollBar()->setValue(scroll);
+        });
+    }
+}
+
 void MainWindow::onEditorZoom(int delta)
 {
     int currentSize = 11;
@@ -854,16 +952,16 @@ void MainWindow::onTabChanged(int index)
         setWindowTitle("tide");
         m_searchBar->setEditor(nullptr);
         m_pathLabel->hide();
-        return;
-    }
-    setWindowTitle("tide - " + m_activeGroup->tabText(index));
-    m_searchBar->setEditor(currentEditor());
+    } else {
+        setWindowTitle("tide - " + m_activeGroup->tabText(index));
+        m_searchBar->setEditor(currentEditor());
 
-    QString filePath = tabFilePath(index);
-    QDir root(QDir::currentPath());
-    QString relative = root.relativeFilePath(filePath);
-    m_pathLabel->setText(relative.replace("/", "  >  "));
-    m_pathLabel->show();
+        QString filePath = tabFilePath(index);
+        QDir root(QDir::currentPath());
+        QString relative = root.relativeFilePath(filePath);
+        m_pathLabel->setText(relative.replace("/", "  >  "));
+        m_pathLabel->show();
+    }
 
     applyMarkdownMode();
 }
@@ -920,12 +1018,17 @@ void MainWindow::showSymbolSearch()
 void MainWindow::closeTab(int index)
 {
     saveTab(index);
+    QString closingPath = tabFilePath(index);
     QWidget *w = m_activeGroup->widget(index);
     QTextDocument *doc = nullptr;
     if (auto *e = qobject_cast<CodeEditor *>(w))
         doc = e->document();
 
     m_activeGroup->removeTab(index);
+
+    if (!closingPath.isEmpty() && !findGroupForPath(closingPath)
+        && m_fileWatcher && m_fileWatcher->files().contains(closingPath))
+        m_fileWatcher->removePath(closingPath);
 
     // If no other editor still references this doc, delete it.
     if (doc) {
@@ -1274,6 +1377,9 @@ void MainWindow::loadFile(const QString &path, int line)
     int index = m_activeGroup->addTab(editor, name);
     // m_openFiles dropped: walk groups for lookups via findGroupForPath()
     m_activeGroup->setCurrentIndex(index);
+
+    if (m_fileWatcher && !m_fileWatcher->files().contains(path))
+        m_fileWatcher->addPath(path);
 
     if (line >= 0) {
         QTextBlock block = editor->document()->findBlockByNumber(line);
