@@ -276,7 +276,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_treeView->header()->hide();
     {
         QFont tf = m_treeView->font();
-        int saved = m_settings->valueInt("tree_font_size", tf.pointSize() > 0 ? tf.pointSize() : 10);
+        int saved = m_settings->valueInt("tree_font_size", 11);
         tf.setPointSize(saved);
         m_treeView->setFont(tf);
     }
@@ -1117,7 +1117,7 @@ void MainWindow::showTabContextMenu(const QPoint &pos)
         editor->setDocument(doc);
         editor->setProperty("filePath", path);
         QFont f = editor->font();
-        f.setPointSize(m_settings->valueInt("editor_font_size", f.pointSize()));
+        f.setPointSize(m_settings->valueInt("editor_font_size", 12));
         editor->setFont(f);
         connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
         connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
@@ -1304,7 +1304,7 @@ void MainWindow::loadFile(const QString &path, int line)
 
     auto *editor = new CodeEditor;
     QFont f = editor->font();
-    f.setPointSize(m_settings->valueInt("editor_font_size", f.pointSize()));
+    f.setPointSize(m_settings->valueInt("editor_font_size", 12));
     editor->setFont(f);
     auto *doc = new QTextDocument(this);
     doc->setDocumentLayout(new QPlainTextDocumentLayout(doc));
