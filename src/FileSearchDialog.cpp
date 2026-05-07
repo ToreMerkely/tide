@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QKeyEvent>
+#include <QRegularExpression>
+#include <QFileInfo>
 
 FileSearchDialog::FileSearchDialog(const QString &rootPath, QWidget *parent)
     : QDialog(parent)
@@ -70,6 +72,22 @@ void FileSearchDialog::onTextChanged(const QString &text)
 
     if (text.isEmpty()) {
         m_list->addItems(m_allFiles);
+    } else if (text.contains('*') || text.contains('?')) {
+        // Wrap with implicit '*' on both ends so partial typing (e.g. "out*m")
+        // shows progressive matches rather than nothing until the user reaches
+        // a string that happens to end the basename.
+        QString padded = text;
+        if (!padded.startsWith('*')) padded.prepend('*');
+        if (!padded.endsWith('*'))   padded.append('*');
+        QRegularExpression re(
+            QRegularExpression::wildcardToRegularExpression(padded),
+            QRegularExpression::CaseInsensitiveOption);
+        bool matchFullPath = text.contains('/');
+        for (const QString &file : m_allFiles) {
+            QString target = matchFullPath ? file : QFileInfo(file).fileName();
+            if (re.match(target).hasMatch())
+                m_list->addItem(file);
+        }
     } else {
         QString lower = text.toLower();
         for (const QString &file : m_allFiles) {
