@@ -27,15 +27,25 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath, QWidget *parent)
     connect(m_input, &QLineEdit::textChanged, this, &FileSearchDialog::onTextChanged);
     connect(m_list, &QListWidget::itemDoubleClicked, this, &FileSearchDialog::onItemDoubleClicked);
 
-    // Scan all files in project
-    QDirIterator it(m_rootPath, QDir::Files | QDir::NoDotAndDotDot,
+    // Scan all files in project. Include hidden files (e.g. .gitignore) but
+    // skip anything inside hidden directories (e.g. .git/) and the build dir.
+    QDirIterator it(m_rootPath, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
     QDir root(m_rootPath);
     while (it.hasNext()) {
         it.next();
         QString relative = root.relativeFilePath(it.filePath());
-        // Skip hidden dirs and build dir
-        if (relative.startsWith(".") || relative.startsWith("build/"))
+        if (relative.startsWith("build/"))
+            continue;
+        QString dirPath = QFileInfo(relative).path();
+        bool inHiddenDir = false;
+        if (!dirPath.isEmpty() && dirPath != ".") {
+            const QStringList parts = dirPath.split('/', Qt::SkipEmptyParts);
+            for (const QString &p : parts) {
+                if (p.startsWith('.')) { inHiddenDir = true; break; }
+            }
+        }
+        if (inHiddenDir)
             continue;
         m_allFiles.append(relative);
     }

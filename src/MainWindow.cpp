@@ -265,6 +265,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_fileModel = new QFileSystemModel(this);
     m_fileModel->setIconProvider(new FileIconProvider());
+    m_fileModel->setFilter(m_fileModel->filter() | QDir::Hidden);
     m_fileModel->setRootPath(QDir::currentPath());
 
     m_treeView = new QTreeView;
