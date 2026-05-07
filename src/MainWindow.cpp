@@ -1624,11 +1624,27 @@ void MainWindow::ensureGoLsp()
         return;
     }
 
+    QString predicted;
+    {
+        QString gobin = qEnvironmentVariable("GOBIN");
+        QString gopath = qEnvironmentVariable("GOPATH");
+        QString home = qEnvironmentVariable("HOME");
+        if (!gobin.isEmpty())
+            predicted = gobin + "/gopls";
+        else if (!gopath.isEmpty())
+            predicted = gopath + "/bin/gopls";
+        else if (!home.isEmpty())
+            predicted = home + "/go/bin/gopls";
+    }
+
     QMessageBox box(this);
     box.setWindowTitle("Go Language Server");
-    box.setText("No Go language server (gopls) was found.\n\n"
-                "You can install it with `go install golang.org/x/tools/gopls@latest`,\n"
-                "browse for an existing binary, or skip and use highlighting only.");
+    QString msg = "No Go language server (gopls) was found.\n\n"
+                  "You can install it with `go install golang.org/x/tools/gopls@latest`,\n"
+                  "browse for an existing binary, or skip and use highlighting only.";
+    if (!predicted.isEmpty())
+        msg += QString("\n\nInstall location: %1").arg(predicted);
+    box.setText(msg);
     box.setMinimumWidth(520);
     QAbstractButton *installBtn = box.addButton("  Install  ", QMessageBox::ActionRole);
     QAbstractButton *browseBtn  = box.addButton("  Browse...  ", QMessageBox::ActionRole);
