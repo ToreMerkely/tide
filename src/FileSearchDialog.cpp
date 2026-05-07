@@ -72,7 +72,12 @@ void FileSearchDialog::onTextChanged(const QString &text)
 
     if (text.isEmpty()) {
         m_list->addItems(m_allFiles);
-    } else if (text.contains('*') || text.contains('?')) {
+        if (m_list->count() > 0)
+            m_list->setCurrentRow(0);
+        return;
+    }
+
+    if (text.contains('*') || text.contains('?')) {
         // Wrap with implicit '*' on both ends so partial typing (e.g. "out*m")
         // shows progressive matches rather than nothing until the user reaches
         // a string that happens to end the basename.
@@ -88,20 +93,62 @@ void FileSearchDialog::onTextChanged(const QString &text)
             if (re.match(target).hasMatch())
                 m_list->addItem(file);
         }
-    } else {
-        QString lower = text.toLower();
-        for (const QString &file : m_allFiles) {
-            // Fuzzy match: all characters of the query appear in order
-            QString fileLower = file.toLower();
-            int qi = 0;
-            for (int fi = 0; fi < fileLower.size() && qi < lower.size(); ++fi) {
-                if (fileLower[fi] == lower[qi])
-                    ++qi;
-            }
-            if (qi == lower.size())
-                m_list->addItem(file);
-        }
+        if (m_list->count() > 0)
+            m_list->setCurrentRow(0);
+        return;
     }
+
+    // Plain query: rank substring matches (basename first, then path) above
+    // subsequence (fuzzy) matches so e.g. "test_migr" surfaces files actually
+    // named test_migr* before files where those letters merely happen to
+    // appear in order.
+    const QString lower = text.toLower();
+
+    struct Scored { int score; QString path; };
+    QList<Scored> scored;
+    scored.reserve(m_allFiles.size());
+
+    for (const QString &file : m_allFiles) {
+        const QString baseLower = QFileInfo(file).fileName().toLower();
+        const QString pathLower = file.toLower();
+
+        int score = 0;
+        if (baseLower.startsWith(lower))
+            score = 5;
+        else if (baseLower.contains(lower))
+            score = 4;
+        else if (pathLower.contains(lower))
+            score = 3;
+        else {
+            // Subsequence (fuzzy)
+            int qi = 0;
+            for (int fi = 0; fi < baseLower.size() && qi < lower.size(); ++fi) {
+                if (baseLower[fi] == lower[qi]) ++qi;
+            }
+            if (qi == lower.size()) {
+                score = 2;
+            } else {
+                qi = 0;
+                for (int fi = 0; fi < pathLower.size() && qi < lower.size(); ++fi) {
+                    if (pathLower[fi] == lower[qi]) ++qi;
+                }
+                if (qi == lower.size())
+                    score = 1;
+            }
+        }
+        if (score > 0)
+            scored.append({score, file});
+    }
+
+    std::sort(scored.begin(), scored.end(), [](const Scored &a, const Scored &b) {
+        if (a.score != b.score) return a.score > b.score;
+        return a.path.compare(b.path, Qt::CaseInsensitive) < 0;
+    });
+
+    const int cap = 500;
+    const int n = qMin(cap, int(scored.size()));
+    for (int i = 0; i < n; ++i)
+        m_list->addItem(scored[i].path);
 
     if (m_list->count() > 0)
         m_list->setCurrentRow(0);
