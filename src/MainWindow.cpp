@@ -860,8 +860,48 @@ void MainWindow::onFileChangedOnDisk(const QString &path)
         }
     });
 
-    if (!QFile::exists(path))
-        return; // deleted/moved — leave the buffer alone
+    if (!QFile::exists(path)) {
+        // Could be a true delete, or an atomic-replace save mid-rename.
+        // Re-check after a short delay; if still gone, close the tabs.
+        QTimer::singleShot(250, this, [this, path]() {
+            if (QFile::exists(path))
+                return;
+            QList<EditorGroup *> emptied;
+            QSet<QTextDocument *> docsTouched;
+            for (EditorGroup *g : m_groups) {
+                int idx = g->indexOfPath(path);
+                if (idx < 0) continue;
+                if (auto *e = qobject_cast<CodeEditor *>(g->widget(idx)))
+                    docsTouched.insert(e->document());
+                g->removeTab(idx);
+                if (g->count() == 0)
+                    emptied.append(g);
+            }
+            if (m_fileWatcher && m_fileWatcher->files().contains(path))
+                m_fileWatcher->removePath(path);
+            for (QTextDocument *doc : docsTouched) {
+                bool stillUsed = false;
+                for (EditorGroup *g : m_groups) {
+                    for (int i = 0; i < g->count() && !stillUsed; ++i) {
+                        auto *e = qobject_cast<CodeEditor *>(g->widget(i));
+                        if (e && e->document() == doc)
+                            stillUsed = true;
+                    }
+                    if (stillUsed) break;
+                }
+                if (!stillUsed)
+                    doc->deleteLater();
+            }
+            for (EditorGroup *g : emptied) {
+                if (m_groups.size() > 1)
+                    removeGroup(g);
+            }
+            statusBar()->showMessage(
+                QString("Deleted on disk: %1").arg(QFileInfo(path).fileName()),
+                3000);
+        });
+        return;
+    }
 
     // Collect all editors in any group that have this path open
     struct State { CodeEditor *editor; int line; int col; int scroll; };
