@@ -195,10 +195,25 @@ static QStringList findPythonPath(const QString &rootPath)
     return paths;
 }
 
+QString MainWindow::projectTitlePrefix()
+{
+    QString cwd = QDir::currentPath();
+    QDir d(cwd);
+    QString last = d.dirName();
+    if (last.isEmpty())
+        return cwd;
+    if (!d.cdUp())
+        return last;
+    QString parent = d.dirName();
+    if (parent.isEmpty())
+        return last;
+    return parent + "/" + last;
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("tide");
+    setWindowTitle(projectTitlePrefix());
     resize(1024, 768);
 
     m_settings = new Settings(QDir::currentPath());
@@ -990,11 +1005,11 @@ void MainWindow::onTabChanged(int index)
     saveAll();
 
     if (index < 0) {
-        setWindowTitle("tide");
+        setWindowTitle(projectTitlePrefix());
         m_searchBar->setEditor(nullptr);
         m_pathLabel->hide();
     } else {
-        setWindowTitle("tide - " + m_activeGroup->tabText(index));
+        setWindowTitle(projectTitlePrefix() + " — " + m_activeGroup->tabText(index));
         m_searchBar->setEditor(currentEditor());
 
         QString filePath = tabFilePath(index);

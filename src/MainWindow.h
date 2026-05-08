@@ -64,6 +64,7 @@ private:
     void navigateTo(const QString &path, int line);
     void pushCurrentLocation();
     void saveTab(int index);
+    static QString projectTitlePrefix();
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
     LspClient *lspForFile(const QString &path) const;
