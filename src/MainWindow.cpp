@@ -220,9 +220,53 @@ QString MainWindow::projectTitlePrefix()
             locale = parent + "/" + last;
     }
     QString branch = readGitBranch(cwd);
-    if (!branch.isEmpty())
-        locale += " [" + branch + "]";
+    if (!branch.isEmpty()) {
+        QString tag = branch;
+        int pr = m_prNumberByBranch.value(branch, 0);
+        if (pr > 0)
+            tag += " #" + QString::number(pr);
+        locale += " [" + tag + "]";
+    }
     return locale;
+}
+
+void MainWindow::queryPrForBranch(const QString &branch)
+{
+    if (branch.isEmpty())
+        return;
+    if (m_prQueryInFlight == branch)
+        return;
+    m_prQueryInFlight = branch;
+
+    auto *proc = new QProcess(this);
+    proc->setWorkingDirectory(QDir::currentPath());
+    proc->setProcessEnvironment(QProcessEnvironment::systemEnvironment());
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, proc, branch](int exitCode, QProcess::ExitStatus) {
+        proc->deleteLater();
+        if (m_prQueryInFlight == branch)
+            m_prQueryInFlight.clear();
+        int number = -1;
+        if (exitCode == 0) {
+            QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+            bool ok = false;
+            int parsed = out.toInt(&ok);
+            if (ok && parsed > 0)
+                number = parsed;
+        }
+        int prev = m_prNumberByBranch.value(branch, 0);
+        m_prNumberByBranch.insert(branch, number);
+        if (prev != number && readGitBranch(QDir::currentPath()) == branch)
+            updateWindowTitle();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc, branch](QProcess::ProcessError) {
+        proc->deleteLater();
+        if (m_prQueryInFlight == branch)
+            m_prQueryInFlight.clear();
+        m_prNumberByBranch.insert(branch, -1);
+    });
+    proc->start("gh", {"pr", "list", "--state", "open", "--head", branch,
+                       "--json", "number", "--jq", ".[0].number"});
 }
 
 void MainWindow::updateWindowTitle()
@@ -518,7 +562,13 @@ MainWindow::MainWindow(QWidget *parent)
                     && QFile::exists(headPath))
                     gitWatcher->addPath(headPath);
                 updateWindowTitle();
+                QString b = readGitBranch(QDir::currentPath());
+                if (!b.isEmpty() && !m_prNumberByBranch.contains(b))
+                    queryPrForBranch(b);
             });
+            QString b = readGitBranch(QDir::currentPath());
+            if (!b.isEmpty())
+                queryPrForBranch(b);
         }
     }
 
@@ -1067,6 +1117,12 @@ bool MainWindow::event(QEvent *event)
 {
     if (event->type() == QEvent::WindowDeactivate)
         saveAll();
+
+    if (event->type() == QEvent::WindowActivate) {
+        QString b = readGitBranch(QDir::currentPath());
+        if (!b.isEmpty())
+            queryPrForBranch(b);
+    }
 
     // Double-Shift detection for symbol search
     if (event->type() == QEvent::KeyPress) {

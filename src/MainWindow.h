@@ -64,8 +64,9 @@ private:
     void navigateTo(const QString &path, int line);
     void pushCurrentLocation();
     void saveTab(int index);
-    static QString projectTitlePrefix();
+    QString projectTitlePrefix();
     void updateWindowTitle();
+    void queryPrForBranch(const QString &branch);
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
     LspClient *lspForFile(const QString &path) const;
@@ -148,6 +149,8 @@ private:
     QToolButton *m_mdSourceBtn = nullptr;
     QToolButton *m_mdSplitBtn = nullptr;
     QToolButton *m_mdPreviewBtn = nullptr;
+    QHash<QString, int> m_prNumberByBranch; // branch -> PR number, -1 = none
+    QString m_prQueryInFlight;
 };
 
 #endif
