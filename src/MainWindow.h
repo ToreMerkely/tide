@@ -65,6 +65,7 @@ private:
     void pushCurrentLocation();
     void saveTab(int index);
     static QString projectTitlePrefix();
+    void updateWindowTitle();
     CodeEditor *currentEditor() const;
     QString tabFilePath(int index) const;
     LspClient *lspForFile(const QString &path) const;

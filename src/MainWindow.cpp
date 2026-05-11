@@ -195,19 +195,44 @@ static QStringList findPythonPath(const QString &rootPath)
     return paths;
 }
 
+static QString readGitBranch(const QString &repoRoot)
+{
+    QFile head(repoRoot + "/.git/HEAD");
+    if (!head.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    QString line = QTextStream(&head).readLine().trimmed();
+    if (line.startsWith("ref: refs/heads/"))
+        return line.mid(QStringLiteral("ref: refs/heads/").size());
+    if (line.size() >= 7)
+        return line.left(7); // detached HEAD: short hash
+    return {};
+}
+
 QString MainWindow::projectTitlePrefix()
 {
     QString cwd = QDir::currentPath();
     QDir d(cwd);
     QString last = d.dirName();
-    if (last.isEmpty())
-        return cwd;
-    if (!d.cdUp())
-        return last;
-    QString parent = d.dirName();
-    if (parent.isEmpty())
-        return last;
-    return parent + "/" + last;
+    QString locale = last.isEmpty() ? cwd : last;
+    if (!last.isEmpty() && d.cdUp()) {
+        QString parent = d.dirName();
+        if (!parent.isEmpty())
+            locale = parent + "/" + last;
+    }
+    QString branch = readGitBranch(cwd);
+    if (!branch.isEmpty())
+        locale += " [" + branch + "]";
+    return locale;
+}
+
+void MainWindow::updateWindowTitle()
+{
+    QString prefix = projectTitlePrefix();
+    int idx = m_activeGroup ? m_activeGroup->currentIndex() : -1;
+    if (idx < 0)
+        setWindowTitle(prefix);
+    else
+        setWindowTitle(prefix + " — " + m_activeGroup->tabText(idx));
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -480,6 +505,22 @@ MainWindow::MainWindow(QWidget *parent)
     m_fileWatcher = new QFileSystemWatcher(this);
     connect(m_fileWatcher, &QFileSystemWatcher::fileChanged,
             this, &MainWindow::onFileChangedOnDisk);
+
+    {
+        QString headPath = QDir::currentPath() + "/.git/HEAD";
+        if (QFile::exists(headPath)) {
+            auto *gitWatcher = new QFileSystemWatcher(this);
+            gitWatcher->addPath(headPath);
+            connect(gitWatcher, &QFileSystemWatcher::fileChanged,
+                    this, [this, gitWatcher, headPath](const QString &) {
+                // Some tools replace .git/HEAD on write; re-add the watch.
+                if (!gitWatcher->files().contains(headPath)
+                    && QFile::exists(headPath))
+                    gitWatcher->addPath(headPath);
+                updateWindowTitle();
+            });
+        }
+    }
 
     connect(m_fileModel, &QFileSystemModel::directoryLoaded,
             this, &MainWindow::onDirectoryLoaded);
@@ -1005,11 +1046,11 @@ void MainWindow::onTabChanged(int index)
     saveAll();
 
     if (index < 0) {
-        setWindowTitle(projectTitlePrefix());
+        updateWindowTitle();
         m_searchBar->setEditor(nullptr);
         m_pathLabel->hide();
     } else {
-        setWindowTitle(projectTitlePrefix() + " — " + m_activeGroup->tabText(index));
+        updateWindowTitle();
         m_searchBar->setEditor(currentEditor());
 
         QString filePath = tabFilePath(index);
