@@ -2037,20 +2037,63 @@ void MainWindow::ensurePythonLsp()
             return;
 
         QString path = dir + "/bin/jedi-language-server";
-        if (!QFile::exists(path)) {
-            QMessageBox::warning(this, "Not found",
-                "No jedi-language-server found at:\n" + path + "\n\n"
-                "Make sure jedi-language-server is installed in that venv.");
+        QString pip = dir + "/bin/pip";
+        auto startLsp = [this, path, dir, root]() {
+            m_pyLspPromptShown = true;
+            m_settings->setValue("python_venv_path", dir);
+            m_pyLsp = new LspClient(path, {}, root, this);
+            QStringList pythonPaths = findPythonPath(root);
+            if (!pythonPaths.isEmpty())
+                m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
+            m_pyLsp->start();
+            for (EditorGroup *g : m_groups) {
+                for (int i = 0; i < g->count(); ++i) {
+                    QWidget *w = g->widget(i);
+                    QString fp = w ? w->property("filePath").toString() : QString();
+                    if (isPythonFile(QFileInfo(fp).suffix())) {
+                        auto *editor = qobject_cast<CodeEditor *>(w);
+                        if (editor)
+                            m_pyLsp->didOpen(fp, editor->toPlainText(), "python");
+                    }
+                }
+            }
+        };
+
+        if (QFile::exists(path)) {
+            startLsp();
             return;
         }
 
+        if (!QFile::exists(pip)) {
+            QMessageBox::warning(this, "Not a venv",
+                "Could not find `pip` at:\n" + pip + "\n\n"
+                "This doesn't look like a Python virtual environment.");
+            return;
+        }
+
+        QMessageBox install(this);
+        install.setWindowTitle("Install jedi-language-server?");
+        install.setText("jedi-language-server is not installed in this venv.\n\n"
+                        "Install it now with:\n  " + pip + " install jedi-language-server");
+        QAbstractButton *yes = install.addButton("  Install  ", QMessageBox::AcceptRole);
+        install.addButton("  Cancel  ", QMessageBox::RejectRole);
+        install.exec();
+        if (install.clickedButton() != yes)
+            return;
+
         m_pyLspPromptShown = true;
-        m_settings->setValue("python_venv_path", dir);
-        m_pyLsp = new LspClient(path, {}, root, this);
-        QStringList pythonPaths = findPythonPath(root);
-        if (!pythonPaths.isEmpty())
-            m_pyLsp->setEnvironment({"PYTHONPATH=" + pythonPaths.join(":")});
-        m_pyLsp->start();
+        auto *proc = new QProcess(this);
+        proc->setWorkingDirectory(root);
+        connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this, proc, path, startLsp](int exitCode, QProcess::ExitStatus) {
+            proc->deleteLater();
+            if (exitCode != 0 || !QFile::exists(path)) {
+                statusBar()->showMessage("jedi-language-server install failed", 5000);
+                return;
+            }
+            startLsp();
+        });
+        proc->start(pip, {"install", "jedi-language-server"});
     }
 }
 
