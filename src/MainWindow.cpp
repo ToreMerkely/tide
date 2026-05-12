@@ -63,6 +63,7 @@
 #include <QTextFrame>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QAbstractTextDocumentLayout>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -1300,6 +1301,8 @@ void MainWindow::showTabContextMenu(const QPoint &pos)
         connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
         connect(editor->verticalScrollBar(), &QScrollBar::valueChanged,
                 this, &MainWindow::syncPreviewFromEditor);
+        connect(editor, &CodeEditor::cursorPositionChanged,
+                this, &MainWindow::syncPreviewFromEditor);
 
         QString name = QFileInfo(path).fileName();
         int newIdx = dst->addTab(editor, name);
@@ -1496,6 +1499,8 @@ void MainWindow::loadFile(const QString &path, int line)
     connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
     connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
     connect(editor->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, &MainWindow::syncPreviewFromEditor);
+    connect(editor, &CodeEditor::cursorPositionChanged,
             this, &MainWindow::syncPreviewFromEditor);
 
     QString suffix = QFileInfo(path).suffix();
@@ -2389,6 +2394,50 @@ void MainWindow::revealCurrentFileInTree()
     m_treeView->scrollTo(idx, QAbstractItemView::PositionAtCenter);
 }
 
+void MainWindow::rebuildMarkdownScrollMap()
+{
+    m_mdScrollAnchors.clear();
+    auto *editor = currentEditor();
+    if (!editor) return;
+
+    // Collect source heading lines.
+    QList<int> srcHeadingLines;
+    const QString src = editor->toPlainText();
+    int line = 0;
+    int pos = 0;
+    bool inFence = false;
+    while (pos <= src.size()) {
+        int eol = src.indexOf('\n', pos);
+        if (eol == -1) eol = src.size();
+        QString s = src.mid(pos, eol - pos);
+        QString stripped = s.trimmed();
+        if (stripped.startsWith("```") || stripped.startsWith("~~~"))
+            inFence = !inFence;
+        else if (!inFence && s.startsWith('#')) {
+            int i = 0;
+            while (i < s.size() && s[i] == '#') i++;
+            if (i >= 1 && i <= 6 && (i == s.size() || s[i] == ' '))
+                srcHeadingLines.append(line);
+        }
+        if (eol == src.size()) break;
+        pos = eol + 1;
+        line++;
+    }
+
+    // Collect rendered heading Y positions.
+    QTextDocument *doc = m_mdPreview->document();
+    auto *layout = doc->documentLayout();
+    QList<int> prevHeadingY;
+    for (QTextBlock b = doc->begin(); b != doc->end(); b = b.next()) {
+        if (b.blockFormat().headingLevel() > 0)
+            prevHeadingY.append(int(layout->blockBoundingRect(b).top()));
+    }
+
+    int n = qMin(srcHeadingLines.size(), prevHeadingY.size());
+    for (int i = 0; i < n; ++i)
+        m_mdScrollAnchors.append({srcHeadingLines[i], prevHeadingY[i]});
+}
+
 void MainWindow::syncPreviewFromEditor()
 {
     if (m_syncingScroll) return;
@@ -2398,12 +2447,42 @@ void MainWindow::syncPreviewFromEditor()
     if (!isMarkdownFile(suffix)) return;
     auto *editor = currentEditor();
     if (!editor) return;
-    QScrollBar *eb = editor->verticalScrollBar();
     QScrollBar *pb = m_mdPreview->verticalScrollBar();
-    if (eb->maximum() <= 0) return;
-    double frac = double(eb->value()) / eb->maximum();
+    if (pb->maximum() <= 0) return;
+
+    int srcLine = editor->cursorForPosition(QPoint(0, 0)).block().blockNumber();
+    int targetY;
+    if (m_mdScrollAnchors.isEmpty()) {
+        QScrollBar *eb = editor->verticalScrollBar();
+        double frac = eb->maximum() > 0 ? double(eb->value()) / eb->maximum() : 0.0;
+        targetY = int(frac * pb->maximum());
+    } else {
+        int before = -1, after = -1;
+        for (int i = 0; i < m_mdScrollAnchors.size(); ++i) {
+            if (m_mdScrollAnchors[i].sourceLine <= srcLine) before = i;
+            else { after = i; break; }
+        }
+        if (before == -1 && after != -1) {
+            int span = m_mdScrollAnchors[after].sourceLine;
+            double f = span > 0 ? double(srcLine) / span : 0.0;
+            targetY = int(f * m_mdScrollAnchors[after].previewY);
+        } else if (after == -1) {
+            int lastSrc = m_mdScrollAnchors[before].sourceLine;
+            int lastY = m_mdScrollAnchors[before].previewY;
+            int srcEnd = editor->document()->blockCount();
+            int yEnd = pb->maximum() + pb->pageStep();
+            int span = srcEnd - lastSrc;
+            double f = span > 0 ? double(srcLine - lastSrc) / span : 0.0;
+            targetY = lastY + int(f * (yEnd - lastY));
+        } else {
+            int srcSpan = m_mdScrollAnchors[after].sourceLine - m_mdScrollAnchors[before].sourceLine;
+            int ySpan = m_mdScrollAnchors[after].previewY - m_mdScrollAnchors[before].previewY;
+            double f = srcSpan > 0 ? double(srcLine - m_mdScrollAnchors[before].sourceLine) / srcSpan : 0.0;
+            targetY = m_mdScrollAnchors[before].previewY + int(f * ySpan);
+        }
+    }
     m_syncingScroll = true;
-    pb->setValue(int(frac * pb->maximum()));
+    pb->setValue(qBound(0, targetY, pb->maximum()));
     m_syncingScroll = false;
 }
 
@@ -2418,10 +2497,40 @@ void MainWindow::syncEditorFromPreview()
     if (!editor) return;
     QScrollBar *eb = editor->verticalScrollBar();
     QScrollBar *pb = m_mdPreview->verticalScrollBar();
-    if (pb->maximum() <= 0) return;
-    double frac = double(pb->value()) / pb->maximum();
+    if (eb->maximum() <= 0) return;
+
+    int prevY = pb->value();
+    int targetLine;
+    if (m_mdScrollAnchors.isEmpty()) {
+        double frac = pb->maximum() > 0 ? double(prevY) / pb->maximum() : 0.0;
+        targetLine = int(frac * editor->document()->blockCount());
+    } else {
+        int before = -1, after = -1;
+        for (int i = 0; i < m_mdScrollAnchors.size(); ++i) {
+            if (m_mdScrollAnchors[i].previewY <= prevY) before = i;
+            else { after = i; break; }
+        }
+        if (before == -1 && after != -1) {
+            double f = m_mdScrollAnchors[after].previewY > 0
+                ? double(prevY) / m_mdScrollAnchors[after].previewY : 0.0;
+            targetLine = int(f * m_mdScrollAnchors[after].sourceLine);
+        } else if (after == -1) {
+            int lastSrc = m_mdScrollAnchors[before].sourceLine;
+            int lastY = m_mdScrollAnchors[before].previewY;
+            int srcEnd = editor->document()->blockCount();
+            int yEnd = pb->maximum() + pb->pageStep();
+            int ySpan = yEnd - lastY;
+            double f = ySpan > 0 ? double(prevY - lastY) / ySpan : 0.0;
+            targetLine = lastSrc + int(f * (srcEnd - lastSrc));
+        } else {
+            int ySpan = m_mdScrollAnchors[after].previewY - m_mdScrollAnchors[before].previewY;
+            int srcSpan = m_mdScrollAnchors[after].sourceLine - m_mdScrollAnchors[before].sourceLine;
+            double f = ySpan > 0 ? double(prevY - m_mdScrollAnchors[before].previewY) / ySpan : 0.0;
+            targetLine = m_mdScrollAnchors[before].sourceLine + int(f * srcSpan);
+        }
+    }
     m_syncingScroll = true;
-    eb->setValue(int(frac * eb->maximum()));
+    eb->setValue(qBound(0, targetLine, eb->maximum()));
     m_syncingScroll = false;
 }
 
@@ -2455,4 +2564,6 @@ void MainWindow::renderMarkdownPreview()
             stack.append(child);
         }
     }
+
+    rebuildMarkdownScrollMap();
 }

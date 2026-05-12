@@ -96,6 +96,7 @@ private:
     void setMarkdownMode(const QString &mode);
     void syncPreviewFromEditor();
     void syncEditorFromPreview();
+    void rebuildMarkdownScrollMap();
 
     bool event(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -158,6 +159,8 @@ private:
     QHash<QString, int> m_prNumberByBranch; // branch -> PR number, -1 = none
     QString m_prQueryInFlight;
     bool m_syncingScroll = false;
+    struct ScrollAnchor { int sourceLine; int previewY; };
+    QList<ScrollAnchor> m_mdScrollAnchors;
 };
 
 #endif
