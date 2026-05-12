@@ -1152,6 +1152,9 @@ void MainWindow::showSearch()
     auto *editor = currentEditor();
     if (!editor)
         return;
+    QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
+    if (isMarkdownFile(suffix) && m_settings->value("markdown_view_mode") == "preview")
+        setMarkdownMode("split");
     m_searchBar->setEditor(editor);
     m_searchBar->activate();
 }
