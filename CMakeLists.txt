@@ -36,6 +36,7 @@ add_executable(tide
     src/FileSearchDialog.cpp
     src/SymbolSearchDialog.cpp
     src/FileIconProvider.cpp
+    src/IgnoreAwareModel.cpp
     resources/icons.qrc
 )
 

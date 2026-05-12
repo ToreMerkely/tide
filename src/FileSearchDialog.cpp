@@ -8,7 +8,9 @@
 #include <QRegularExpression>
 #include <QFileInfo>
 
-FileSearchDialog::FileSearchDialog(const QString &rootPath, QWidget *parent)
+FileSearchDialog::FileSearchDialog(const QString &rootPath,
+                                   const QSet<QString> &ignoredAbsolutePaths,
+                                   QWidget *parent)
     : QDialog(parent)
     , m_rootPath(rootPath)
 {
@@ -30,13 +32,15 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath, QWidget *parent)
     connect(m_list, &QListWidget::itemDoubleClicked, this, &FileSearchDialog::onItemDoubleClicked);
 
     // Scan all files in project. Include hidden files (e.g. .gitignore) but
-    // skip anything inside hidden directories (e.g. .git/) and the build dir.
+    // skip anything inside hidden directories (e.g. .git/), the build dir,
+    // and any directory the user has marked as ignored.
     QDirIterator it(m_rootPath, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
     QDir root(m_rootPath);
     while (it.hasNext()) {
         it.next();
-        QString relative = root.relativeFilePath(it.filePath());
+        QString absolute = it.filePath();
+        QString relative = root.relativeFilePath(absolute);
         if (relative.startsWith("build/"))
             continue;
         QString dirPath = QFileInfo(relative).path();
@@ -48,6 +52,15 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath, QWidget *parent)
             }
         }
         if (inHiddenDir)
+            continue;
+        bool inIgnored = false;
+        for (const QString &ig : ignoredAbsolutePaths) {
+            if (absolute == ig || absolute.startsWith(ig + "/")) {
+                inIgnored = true;
+                break;
+            }
+        }
+        if (inIgnored)
             continue;
         m_allFiles.append(relative);
     }

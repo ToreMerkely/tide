@@ -19,7 +19,7 @@ class QFileSystemWatcher;
 
 class QTreeView;
 class CodeEditor;
-class QFileSystemModel;
+class IgnoreAwareModel;
 class QTabBar;
 class QStackedWidget;
 class LspClient;
@@ -115,7 +115,11 @@ private:
     void closeSplit();
     void removeGroup(EditorGroup *group);
     EditorGroup *findGroupForPath(const QString &path) const;
-    QFileSystemModel *m_fileModel;
+    IgnoreAwareModel *m_fileModel;
+    QSet<QString> m_ignoredAbsolute;
+    void loadIgnoredFromSettings();
+    void saveIgnoredToSettings();
+    void toggleIgnored(const QString &absolutePath);
     // (was m_openFiles cache; now derived by walking groups via findGroupForPath)
     LspClient *m_cppLsp;
     LspClient *m_pyLsp;

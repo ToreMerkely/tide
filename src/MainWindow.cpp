@@ -21,6 +21,7 @@
 #include "FileSearchDialog.h"
 #include "SymbolSearchDialog.h"
 #include "FileIconProvider.h"
+#include "IgnoreAwareModel.h"
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QApplication>
@@ -347,10 +348,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_mdSplitBtn, &QToolButton::clicked, this, [this]() { setMarkdownMode("split"); });
     connect(m_mdPreviewBtn, &QToolButton::clicked, this, [this]() { setMarkdownMode("preview"); });
 
-    m_fileModel = new QFileSystemModel(this);
+    m_fileModel = new IgnoreAwareModel(this);
     m_fileModel->setIconProvider(new FileIconProvider());
     m_fileModel->setFilter(m_fileModel->filter() | QDir::Hidden);
     m_fileModel->setRootPath(QDir::currentPath());
+    loadIgnoredFromSettings();
 
     m_treeView = new QTreeView;
     m_treeView->setModel(m_fileModel);
@@ -1156,7 +1158,7 @@ void MainWindow::showSearch()
 
 void MainWindow::showFileSearch()
 {
-    FileSearchDialog dialog(QDir::currentPath(), this);
+    FileSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
     if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
         loadFile(dialog.selectedFile());
 }
@@ -2221,6 +2223,13 @@ void MainWindow::showTreeContextMenu(const QPoint &pos)
     QAction *openAct = isDir ? nullptr : menu.addAction("Open");
     QAction *splitAct = isDir ? nullptr : menu.addAction("Open in Other Split");
     QAction *copyAct = menu.addAction("Copy Path");
+    QAction *ignoreAct = nullptr;
+    if (isDir) {
+        menu.addSeparator();
+        ignoreAct = menu.addAction(m_ignoredAbsolute.contains(path)
+                                       ? "Stop Ignoring"
+                                       : "Ignore Directory");
+    }
 
     QAction *chosen = menu.exec(m_treeView->viewport()->mapToGlobal(pos));
     if (chosen == nullptr)
@@ -2231,6 +2240,45 @@ void MainWindow::showTreeContextMenu(const QPoint &pos)
         openInOtherSplit(path);
     else if (chosen == copyAct)
         QApplication::clipboard()->setText(path);
+    else if (chosen == ignoreAct)
+        toggleIgnored(path);
+}
+
+void MainWindow::loadIgnoredFromSettings()
+{
+    m_ignoredAbsolute.clear();
+    QString root = QDir::currentPath();
+    QDir rootDir(root);
+    for (const QString &rel : m_settings->valueList("ignored_dirs"))
+        m_ignoredAbsolute.insert(QDir::cleanPath(rootDir.absoluteFilePath(rel)));
+    if (m_fileModel)
+        m_fileModel->setIgnoredPaths(m_ignoredAbsolute);
+}
+
+void MainWindow::saveIgnoredToSettings()
+{
+    QString root = QDir::currentPath();
+    QDir rootDir(root);
+    QStringList rels;
+    for (const QString &abs : m_ignoredAbsolute) {
+        QString rel = rootDir.relativeFilePath(abs);
+        if (rel.startsWith("../") || rel == ".." || rel.isEmpty())
+            continue;
+        rels.append(rel);
+    }
+    rels.sort();
+    m_settings->setValueList("ignored_dirs", rels);
+}
+
+void MainWindow::toggleIgnored(const QString &absolutePath)
+{
+    QString clean = QDir::cleanPath(absolutePath);
+    if (m_ignoredAbsolute.contains(clean))
+        m_ignoredAbsolute.remove(clean);
+    else
+        m_ignoredAbsolute.insert(clean);
+    m_fileModel->setIgnoredPaths(m_ignoredAbsolute);
+    saveIgnoredToSettings();
 }
 
 void MainWindow::openInOtherSplit(const QString &path)

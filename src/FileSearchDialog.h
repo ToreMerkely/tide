@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <QStringList>
+#include <QSet>
 
 class QLineEdit;
 class QListWidget;
@@ -11,7 +12,9 @@ class FileSearchDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit FileSearchDialog(const QString &rootPath, QWidget *parent = nullptr);
+    explicit FileSearchDialog(const QString &rootPath,
+                              const QSet<QString> &ignoredAbsolutePaths = {},
+                              QWidget *parent = nullptr);
     QString selectedFile() const;
 
 private slots:
