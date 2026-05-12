@@ -98,10 +98,9 @@ void FileSearchDialog::onTextChanged(const QString &text)
         return;
     }
 
-    // Plain query: rank substring matches (basename first, then path) above
-    // subsequence (fuzzy) matches so e.g. "test_migr" surfaces files actually
-    // named test_migr* before files where those letters merely happen to
-    // appear in order.
+    // Plain query: substring match only, ranked by where the hit lands
+    // (basename-prefix > basename-anywhere > path-anywhere). Use globs (*, ?)
+    // for looser matching.
     const QString lower = text.toLower();
 
     struct Scored { int score; QString path; };
@@ -114,28 +113,12 @@ void FileSearchDialog::onTextChanged(const QString &text)
 
         int score = 0;
         if (baseLower.startsWith(lower))
-            score = 5;
-        else if (baseLower.contains(lower))
-            score = 4;
-        else if (pathLower.contains(lower))
             score = 3;
-        else {
-            // Subsequence (fuzzy)
-            int qi = 0;
-            for (int fi = 0; fi < baseLower.size() && qi < lower.size(); ++fi) {
-                if (baseLower[fi] == lower[qi]) ++qi;
-            }
-            if (qi == lower.size()) {
-                score = 2;
-            } else {
-                qi = 0;
-                for (int fi = 0; fi < pathLower.size() && qi < lower.size(); ++fi) {
-                    if (pathLower[fi] == lower[qi]) ++qi;
-                }
-                if (qi == lower.size())
-                    score = 1;
-            }
-        }
+        else if (baseLower.contains(lower))
+            score = 2;
+        else if (pathLower.contains(lower))
+            score = 1;
+
         if (score > 0)
             scored.append({score, file});
     }
