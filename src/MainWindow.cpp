@@ -61,6 +61,8 @@
 #include <QActionGroup>
 #include <QTextTable>
 #include <QTextFrame>
+#include <QDesktopServices>
+#include <QUrl>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -387,6 +389,23 @@ MainWindow::MainWindow(QWidget *parent)
     m_mdPreview = new QTextBrowser;
     m_mdPreview->setOpenExternalLinks(false);
     m_mdPreview->setOpenLinks(false);
+    connect(m_mdPreview, &QTextBrowser::anchorClicked, this, [](const QUrl &url) {
+        const QString scheme = url.scheme().toLower();
+        if (scheme != "http" && scheme != "https" && scheme != "mailto")
+            return;
+        // QDesktopServices::openUrl inherits stderr, so browser chatter
+        // ("Opening in existing browser session.") leaks into our terminal.
+        // Launch xdg-open with nulled stdio instead.
+        QProcess proc;
+        proc.setProgram("xdg-open");
+        proc.setArguments({url.toString()});
+        proc.setStandardOutputFile(QProcess::nullDevice());
+        proc.setStandardErrorFile(QProcess::nullDevice());
+        if (!proc.startDetached())
+            QDesktopServices::openUrl(url);
+    });
+    connect(m_mdPreview->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, &MainWindow::syncEditorFromPreview);
     {
         QFont f = m_mdPreview->font();
         f.setFamily("Segoe UI, Helvetica, Arial, sans-serif");
@@ -1279,6 +1298,8 @@ void MainWindow::showTabContextMenu(const QPoint &pos)
         editor->setFont(f);
         connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
         connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
+        connect(editor->verticalScrollBar(), &QScrollBar::valueChanged,
+                this, &MainWindow::syncPreviewFromEditor);
 
         QString name = QFileInfo(path).fileName();
         int newIdx = dst->addTab(editor, name);
@@ -1474,6 +1495,8 @@ void MainWindow::loadFile(const QString &path, int line)
     editor->document()->setModified(false);
     connect(editor, &CodeEditor::textChanged, this, &MainWindow::onEditorModified);
     connect(editor, &CodeEditor::zoomRequested, this, &MainWindow::onEditorZoom);
+    connect(editor->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, &MainWindow::syncPreviewFromEditor);
 
     QString suffix = QFileInfo(path).suffix();
     QString fileName = QFileInfo(path).fileName();
@@ -2321,6 +2344,42 @@ void MainWindow::revealCurrentFileInTree()
 
     m_treeView->setCurrentIndex(idx);
     m_treeView->scrollTo(idx, QAbstractItemView::PositionAtCenter);
+}
+
+void MainWindow::syncPreviewFromEditor()
+{
+    if (m_syncingScroll) return;
+    if (m_settings->value("markdown_view_mode") != "split") return;
+    if (!m_activeGroup) return;
+    QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
+    if (!isMarkdownFile(suffix)) return;
+    auto *editor = currentEditor();
+    if (!editor) return;
+    QScrollBar *eb = editor->verticalScrollBar();
+    QScrollBar *pb = m_mdPreview->verticalScrollBar();
+    if (eb->maximum() <= 0) return;
+    double frac = double(eb->value()) / eb->maximum();
+    m_syncingScroll = true;
+    pb->setValue(int(frac * pb->maximum()));
+    m_syncingScroll = false;
+}
+
+void MainWindow::syncEditorFromPreview()
+{
+    if (m_syncingScroll) return;
+    if (m_settings->value("markdown_view_mode") != "split") return;
+    if (!m_activeGroup) return;
+    QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
+    if (!isMarkdownFile(suffix)) return;
+    auto *editor = currentEditor();
+    if (!editor) return;
+    QScrollBar *eb = editor->verticalScrollBar();
+    QScrollBar *pb = m_mdPreview->verticalScrollBar();
+    if (pb->maximum() <= 0) return;
+    double frac = double(pb->value()) / pb->maximum();
+    m_syncingScroll = true;
+    eb->setValue(int(frac * eb->maximum()));
+    m_syncingScroll = false;
 }
 
 void MainWindow::renderMarkdownPreview()

@@ -94,6 +94,8 @@ private:
     void applyMarkdownMode();
     void renderMarkdownPreview();
     void setMarkdownMode(const QString &mode);
+    void syncPreviewFromEditor();
+    void syncEditorFromPreview();
 
     bool event(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -155,6 +157,7 @@ private:
     QToolButton *m_mdPreviewBtn = nullptr;
     QHash<QString, int> m_prNumberByBranch; // branch -> PR number, -1 = none
     QString m_prQueryInFlight;
+    bool m_syncingScroll = false;
 };
 
 #endif
