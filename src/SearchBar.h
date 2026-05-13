@@ -5,6 +5,7 @@
 
 class QLineEdit;
 class QLabel;
+class QPushButton;
 class QPlainTextEdit;
 
 class SearchBar : public QWidget {
@@ -31,6 +32,7 @@ private:
 
     QLineEdit *m_input;
     QLabel *m_matchLabel;
+    QPushButton *m_caseBtn = nullptr;
     QPlainTextEdit *m_editor = nullptr;
 
     struct Match {

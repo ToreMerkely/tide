@@ -1,6 +1,8 @@
 #include "EditorGroup.h"
+#include "SearchBar.h"
 #include <QStackedWidget>
 #include <QVBoxLayout>
+#include <QPlainTextEdit>
 #include <QEvent>
 #include <QPainter>
 
@@ -41,15 +43,22 @@ EditorGroup::EditorGroup(QWidget *parent)
 
     m_pageStack = new QStackedWidget;
 
+    m_searchBar = new SearchBar;
+
     m_underline = nullptr;
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(m_tabBar);
+    layout->addWidget(m_searchBar);
     layout->addWidget(m_pageStack, 1);
 
     connect(m_tabBar, &QTabBar::currentChanged, m_pageStack, &QStackedWidget::setCurrentIndex);
+    connect(m_tabBar, &QTabBar::currentChanged, this, [this](int idx) {
+        m_searchBar->setEditor(qobject_cast<QPlainTextEdit *>(
+            idx >= 0 ? m_pageStack->widget(idx) : nullptr));
+    });
     connect(m_tabBar, &QTabBar::tabMoved, this, [this](int from, int to) {
         QWidget *w = m_pageStack->widget(from);
         if (!w)
@@ -94,6 +103,12 @@ int EditorGroup::indexOfPath(const QString &path) const
             return i;
     }
     return -1;
+}
+
+void EditorGroup::activateSearch()
+{
+    m_searchBar->setEditor(qobject_cast<QPlainTextEdit *>(currentWidget()));
+    m_searchBar->activate();
 }
 
 void EditorGroup::setActiveLook(bool active)

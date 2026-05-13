@@ -5,6 +5,7 @@
 #include <QTabBar>
 
 class QStackedWidget;
+class SearchBar;
 
 class ActiveUnderlineTabBar : public QTabBar {
     Q_OBJECT
@@ -36,6 +37,8 @@ public:
     void removeTab(int index);
 
     int indexOfPath(const QString &path) const;
+    SearchBar *searchBar() const { return m_searchBar; }
+    void activateSearch();
     void setActiveLook(bool active);
     void setUnderlineVisible(bool visible);
     void setContentVisible(bool visible);
@@ -51,6 +54,7 @@ protected:
 private:
     QTabBar *m_tabBar;
     QStackedWidget *m_pageStack;
+    SearchBar *m_searchBar;
     QWidget *m_underline;
 };
 

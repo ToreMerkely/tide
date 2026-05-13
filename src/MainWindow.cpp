@@ -380,7 +380,6 @@ MainWindow::MainWindow(QWidget *parent)
     firstGroup->setActiveLook(true);
     m_groupSplitter->addWidget(firstGroup);
 
-    m_searchBar = new SearchBar;
 
     m_pathLabel = new QLabel;
     m_pathLabel->setContentsMargins(6, 2, 6, 2);
@@ -454,7 +453,6 @@ MainWindow::MainWindow(QWidget *parent)
     holderLayout->setSpacing(0);
     m_previewTabHolder->hide();
 
-    rightLayout->addWidget(m_searchBar);
     rightLayout->addWidget(pathBar);
     rightLayout->addWidget(m_previewTabHolder);
     rightLayout->addWidget(m_editorSplitter, 1);
@@ -1119,11 +1117,9 @@ void MainWindow::onTabChanged(int index)
 
     if (index < 0) {
         updateWindowTitle();
-        m_searchBar->setEditor(nullptr);
         m_pathLabel->hide();
     } else {
         updateWindowTitle();
-        m_searchBar->setEditor(currentEditor());
 
         QString filePath = tabFilePath(index);
         QDir root(QDir::currentPath());
@@ -1175,8 +1171,8 @@ void MainWindow::showSearch()
     QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
     if (isMarkdownFile(suffix) && m_settings->value("markdown_view_mode") == "preview")
         setMarkdownMode("split");
-    m_searchBar->setEditor(editor);
-    m_searchBar->activate();
+    if (m_activeGroup)
+        m_activeGroup->activateSearch();
 }
 
 void MainWindow::showFileSearch()

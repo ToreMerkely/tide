@@ -129,7 +129,6 @@ private:
     LspClient *m_goLsp = nullptr;
     bool m_goLspPromptShown = false;
     QFileSystemWatcher *m_fileWatcher = nullptr;
-    SearchBar *m_searchBar;
     QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;
     Settings *m_settings;

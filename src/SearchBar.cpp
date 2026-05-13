@@ -29,18 +29,33 @@ SearchBar::SearchBar(QWidget *parent)
     nextBtn->setFixedWidth(28);
     nextBtn->setFocusPolicy(Qt::NoFocus);
 
+    m_caseBtn = new QPushButton("Aa");
+    m_caseBtn->setCheckable(true);
+    m_caseBtn->setFixedWidth(32);
+    m_caseBtn->setFocusPolicy(Qt::NoFocus);
+    m_caseBtn->setToolTip("Match case");
+    m_caseBtn->setStyleSheet(
+        "QPushButton { border: 1px solid transparent; padding: 2px 4px; }"
+        "QPushButton:hover { border: 1px solid #4D5054; }"
+        "QPushButton:checked { background-color: #21426D; "
+        "                      border: 1px solid #589DF6; color: #FFFFFF; }");
+
     auto *closeBtn = new QPushButton("\u2715");
     closeBtn->setFixedWidth(28);
     closeBtn->setFocusPolicy(Qt::NoFocus);
 
     layout->addWidget(m_input);
     layout->addWidget(m_matchLabel);
+    layout->addWidget(m_caseBtn);
     layout->addWidget(prevBtn);
     layout->addWidget(nextBtn);
     layout->addWidget(closeBtn);
     layout->addStretch();
 
     connect(m_input, &QLineEdit::textChanged, this, &SearchBar::onTextChanged);
+    connect(m_caseBtn, &QPushButton::toggled, this, [this](bool) {
+        onTextChanged(m_input->text());
+    });
     connect(prevBtn, &QPushButton::clicked, this, &SearchBar::findPrevious);
     connect(nextBtn, &QPushButton::clicked, this, &SearchBar::findNext);
     connect(closeBtn, &QPushButton::clicked, this, &SearchBar::close);
@@ -95,8 +110,11 @@ void SearchBar::onTextChanged(const QString &text)
     // Find all matches
     QTextDocument *doc = m_editor->document();
     QTextCursor cursor(doc);
+    QTextDocument::FindFlags flags;
+    if (m_caseBtn && m_caseBtn->isChecked())
+        flags |= QTextDocument::FindCaseSensitively;
     while (true) {
-        cursor = doc->find(text, cursor);
+        cursor = doc->find(text, cursor, flags);
         if (cursor.isNull())
             break;
         m_matches.append({cursor.selectionStart(), cursor.selectionEnd() - cursor.selectionStart()});
