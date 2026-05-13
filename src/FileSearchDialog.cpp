@@ -7,12 +7,15 @@
 #include <QKeyEvent>
 #include <QRegularExpression>
 #include <QFileInfo>
+#include <QTimer>
+#include <QApplication>
 
 FileSearchDialog::FileSearchDialog(const QString &rootPath,
                                    const QSet<QString> &ignoredAbsolutePaths,
                                    QWidget *parent)
     : QDialog(parent)
     , m_rootPath(rootPath)
+    , m_ignoredAbsolute(ignoredAbsolutePaths)
 {
     setWindowTitle("Go to File");
     setMinimumSize(500, 400);
@@ -22,6 +25,7 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath,
     m_input->installEventFilter(this);
 
     m_list = new QListWidget;
+    m_list->addItem("Scanning project...");
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 8, 8, 8);
@@ -31,12 +35,18 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath,
     connect(m_input, &QLineEdit::textChanged, this, &FileSearchDialog::onTextChanged);
     connect(m_list, &QListWidget::itemDoubleClicked, this, &FileSearchDialog::onItemDoubleClicked);
 
-    // Scan all files in project. Include hidden files (e.g. .gitignore) but
-    // skip anything inside hidden directories (e.g. .git/), the build dir,
-    // and any directory the user has marked as ignored.
+    m_input->setFocus();
+
+    // Defer the project scan so the dialog appears immediately.
+    QTimer::singleShot(0, this, &FileSearchDialog::populate);
+}
+
+void FileSearchDialog::populate()
+{
     QDirIterator it(m_rootPath, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
     QDir root(m_rootPath);
+    int seen = 0;
     while (it.hasNext()) {
         it.next();
         QString absolute = it.filePath();
@@ -54,7 +64,7 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath,
         if (inHiddenDir)
             continue;
         bool inIgnored = false;
-        for (const QString &ig : ignoredAbsolutePaths) {
+        for (const QString &ig : m_ignoredAbsolute) {
             if (absolute == ig || absolute.startsWith(ig + "/")) {
                 inIgnored = true;
                 break;
@@ -63,15 +73,12 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath,
         if (inIgnored)
             continue;
         m_allFiles.append(relative);
+        if (++seen % 1000 == 0)
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     }
     m_allFiles.sort(Qt::CaseInsensitive);
-
-    // Show all files initially
-    m_list->addItems(m_allFiles);
-    if (m_list->count() > 0)
-        m_list->setCurrentRow(0);
-
-    m_input->setFocus();
+    m_populated = true;
+    onTextChanged(m_input->text());
 }
 
 QString FileSearchDialog::selectedFile() const
@@ -82,6 +89,11 @@ QString FileSearchDialog::selectedFile() const
 void FileSearchDialog::onTextChanged(const QString &text)
 {
     m_list->clear();
+
+    if (!m_populated) {
+        m_list->addItem("Scanning project...");
+        return;
+    }
 
     if (text.isEmpty()) {
         m_list->addItems(m_allFiles);

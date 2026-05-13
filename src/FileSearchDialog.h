@@ -23,13 +23,16 @@ private slots:
 
 private:
     void scanFiles(const QString &dir, const QString &prefix);
+    void populate();
     bool eventFilter(QObject *obj, QEvent *event) override;
 
     QLineEdit *m_input;
     QListWidget *m_list;
     QString m_rootPath;
+    QSet<QString> m_ignoredAbsolute;
     QStringList m_allFiles;
     QString m_selectedFile;
+    bool m_populated = false;
 };
 
 #endif
