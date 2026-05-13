@@ -25,6 +25,7 @@ public:
 
 signals:
     void zoomRequested(int delta);
+    void escapePressed();
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;

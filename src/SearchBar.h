@@ -20,11 +20,13 @@ public:
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
+public slots:
+    void close();
+
 private slots:
     void onTextChanged(const QString &text);
     void findNext();
     void findPrevious();
-    void close();
 
 private:
     void highlightMatches();

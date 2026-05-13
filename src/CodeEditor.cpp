@@ -528,6 +528,10 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    if (event->key() == Qt::Key_Escape) {
+        emit escapePressed();
+        // Fall through so QPlainTextEdit's default handling still runs.
+    }
     QPlainTextEdit::keyPressEvent(event);
 }
 

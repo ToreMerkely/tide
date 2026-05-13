@@ -1,5 +1,6 @@
 #include "EditorGroup.h"
 #include "SearchBar.h"
+#include "CodeEditor.h"
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QPlainTextEdit>
@@ -82,6 +83,12 @@ int EditorGroup::addTab(QWidget *page, const QString &label)
 {
     m_pageStack->addWidget(page);
     int idx = m_tabBar->addTab(label);
+    if (auto *ed = qobject_cast<CodeEditor *>(page)) {
+        connect(ed, &CodeEditor::escapePressed, this, [this]() {
+            if (m_searchBar->isVisible())
+                m_searchBar->close();
+        });
+    }
     return idx;
 }
 
