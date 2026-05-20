@@ -38,6 +38,7 @@ add_executable(tide
     src/FileIconProvider.cpp
     src/IgnoreAwareModel.cpp
     resources/icons.qrc
+    resources/app.qrc
 )
 
 target_link_libraries(tide PRIVATE Qt6::Widgets)

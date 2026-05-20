@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QIcon>
 #include <QPalette>
 #include <QStyleFactory>
 #include "MainWindow.h"
@@ -6,6 +7,7 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(":/tide.svg"));
     app.setStyle(QStyleFactory::create("Fusion"));
 
     QPalette palette;

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="tide">
+  <title>tide</title>
+  <rect x="16" y="16" width="224" height="224" rx="40" fill="#1F2937"/>
+  <circle cx="180" cy="80" r="20" fill="#FBBF24"/>
+  <path d="M 40 152 Q 76 108 112 152 T 184 152 T 256 152 L 256 200 L 40 200 Z" fill="#38BDF8"/>
+  <path d="M 40 180 Q 76 144 112 180 T 184 180 T 256 180 L 256 220 L 40 220 Z" fill="#E5E7EB"/>
+</svg>
