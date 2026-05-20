@@ -6,6 +6,7 @@
 #include <QPlainTextEdit>
 #include <QTextDocument>
 #include <QKeyEvent>
+#include <QRegularExpression>
 
 SearchBar::SearchBar(QWidget *parent)
     : QWidget(parent)
@@ -29,16 +30,25 @@ SearchBar::SearchBar(QWidget *parent)
     nextBtn->setFixedWidth(28);
     nextBtn->setFocusPolicy(Qt::NoFocus);
 
+    const QString toggleStyle =
+        "QPushButton { border: 1px solid transparent; padding: 2px 4px; }"
+        "QPushButton:hover { border: 1px solid #4D5054; }"
+        "QPushButton:checked { background-color: #21426D; "
+        "                      border: 1px solid #589DF6; color: #FFFFFF; }";
+
     m_caseBtn = new QPushButton("Aa");
     m_caseBtn->setCheckable(true);
     m_caseBtn->setFixedWidth(32);
     m_caseBtn->setFocusPolicy(Qt::NoFocus);
     m_caseBtn->setToolTip("Match case");
-    m_caseBtn->setStyleSheet(
-        "QPushButton { border: 1px solid transparent; padding: 2px 4px; }"
-        "QPushButton:hover { border: 1px solid #4D5054; }"
-        "QPushButton:checked { background-color: #21426D; "
-        "                      border: 1px solid #589DF6; color: #FFFFFF; }");
+    m_caseBtn->setStyleSheet(toggleStyle);
+
+    m_regexBtn = new QPushButton(".*");
+    m_regexBtn->setCheckable(true);
+    m_regexBtn->setFixedWidth(32);
+    m_regexBtn->setFocusPolicy(Qt::NoFocus);
+    m_regexBtn->setToolTip("Regular expression");
+    m_regexBtn->setStyleSheet(toggleStyle);
 
     auto *closeBtn = new QPushButton("\u2715");
     closeBtn->setFixedWidth(28);
@@ -47,15 +57,16 @@ SearchBar::SearchBar(QWidget *parent)
     layout->addWidget(m_input);
     layout->addWidget(m_matchLabel);
     layout->addWidget(m_caseBtn);
+    layout->addWidget(m_regexBtn);
     layout->addWidget(prevBtn);
     layout->addWidget(nextBtn);
     layout->addWidget(closeBtn);
     layout->addStretch();
 
     connect(m_input, &QLineEdit::textChanged, this, &SearchBar::onTextChanged);
-    connect(m_caseBtn, &QPushButton::toggled, this, [this](bool) {
-        onTextChanged(m_input->text());
-    });
+    auto rerun = [this](bool) { onTextChanged(m_input->text()); };
+    connect(m_caseBtn, &QPushButton::toggled, this, rerun);
+    connect(m_regexBtn, &QPushButton::toggled, this, rerun);
     connect(prevBtn, &QPushButton::clicked, this, &SearchBar::findPrevious);
     connect(nextBtn, &QPushButton::clicked, this, &SearchBar::findNext);
     connect(closeBtn, &QPushButton::clicked, this, &SearchBar::close);
@@ -71,6 +82,11 @@ void SearchBar::setEditor(QPlainTextEdit *editor)
 void SearchBar::activate()
 {
     show();
+    if (m_editor) {
+        QString selection = m_editor->textCursor().selectedText();
+        if (!selection.isEmpty() && !selection.contains(QChar::ParagraphSeparator))
+            m_input->setText(selection);
+    }
     m_input->setFocus();
     m_input->selectAll();
     onTextChanged(m_input->text());
@@ -110,14 +126,35 @@ void SearchBar::onTextChanged(const QString &text)
     // Find all matches
     QTextDocument *doc = m_editor->document();
     QTextCursor cursor(doc);
-    QTextDocument::FindFlags flags;
-    if (m_caseBtn && m_caseBtn->isChecked())
-        flags |= QTextDocument::FindCaseSensitively;
-    while (true) {
-        cursor = doc->find(text, cursor, flags);
-        if (cursor.isNull())
-            break;
-        m_matches.append({cursor.selectionStart(), cursor.selectionEnd() - cursor.selectionStart()});
+    const bool caseSensitive = m_caseBtn && m_caseBtn->isChecked();
+    const bool regex = m_regexBtn && m_regexBtn->isChecked();
+
+    if (regex) {
+        QRegularExpression::PatternOptions opts;
+        if (!caseSensitive)
+            opts |= QRegularExpression::CaseInsensitiveOption;
+        QRegularExpression re(text, opts);
+        if (!re.isValid()) {
+            m_matchLabel->setText("(bad regex)");
+            m_editor->setExtraSelections({});
+            return;
+        }
+        while (true) {
+            cursor = doc->find(re, cursor);
+            if (cursor.isNull())
+                break;
+            m_matches.append({cursor.selectionStart(), cursor.selectionEnd() - cursor.selectionStart()});
+        }
+    } else {
+        QTextDocument::FindFlags flags;
+        if (caseSensitive)
+            flags |= QTextDocument::FindCaseSensitively;
+        while (true) {
+            cursor = doc->find(text, cursor, flags);
+            if (cursor.isNull())
+                break;
+            m_matches.append({cursor.selectionStart(), cursor.selectionEnd() - cursor.selectionStart()});
+        }
     }
 
     highlightMatches();

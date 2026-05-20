@@ -35,6 +35,7 @@ private:
     QLineEdit *m_input;
     QLabel *m_matchLabel;
     QPushButton *m_caseBtn = nullptr;
+    QPushButton *m_regexBtn = nullptr;
     QPlainTextEdit *m_editor = nullptr;
 
     struct Match {
