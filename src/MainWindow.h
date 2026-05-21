@@ -40,6 +40,7 @@ private slots:
     void onTabChanged(int index);
     void closeTab(int index);
     void gotoDefinition();
+    void gotoLine();
     void navigateBack();
     void navigateForward();
     void showSearch();

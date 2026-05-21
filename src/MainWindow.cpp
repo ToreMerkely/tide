@@ -64,6 +64,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QAbstractTextDocumentLayout>
+#include <QInputDialog>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
 {
@@ -545,6 +546,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *fileSearchShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N), this);
     connect(fileSearchShortcut, &QShortcut::activated, this, &MainWindow::showFileSearch);
+
+    auto *gotoLineShortcut = new QShortcut(QKeySequence(Qt::Key_F7), this);
+    connect(gotoLineShortcut, &QShortcut::activated, this, &MainWindow::gotoLine);
 
     auto *zoomIn1 = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus), this);
     auto *zoomIn2 = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Equal), this);
@@ -1390,6 +1394,30 @@ void MainWindow::pushCurrentLocation()
     if (path.isEmpty())
         return;
     m_backStack.push({path, editor->textCursor().blockNumber()});
+}
+
+void MainWindow::gotoLine()
+{
+    auto *editor = currentEditor();
+    if (!editor)
+        return;
+
+    const int total = editor->document()->blockCount();
+    const int current = editor->textCursor().blockNumber() + 1;
+    bool ok = false;
+    int line = QInputDialog::getInt(this, "Go to Line",
+                                    QString("Line number (1 - %1):").arg(total),
+                                    current, 1, total, 1, &ok);
+    if (!ok)
+        return;
+
+    pushCurrentLocation();
+    m_forwardStack.clear();
+
+    QTextCursor cursor(editor->document()->findBlockByNumber(line - 1));
+    editor->setTextCursor(cursor);
+    editor->centerCursor();
+    editor->setFocus();
 }
 
 void MainWindow::navigateTo(const QString &path, int line)
