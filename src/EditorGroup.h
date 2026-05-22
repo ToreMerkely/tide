@@ -39,6 +39,7 @@ public:
     int indexOfPath(const QString &path) const;
     SearchBar *searchBar() const { return m_searchBar; }
     void activateSearch();
+    void activateSearchReplace();
     void setActiveLook(bool active);
     void setUnderlineVisible(bool visible);
     void setContentVisible(bool visible);

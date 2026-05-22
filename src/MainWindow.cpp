@@ -544,6 +544,9 @@ MainWindow::MainWindow(QWidget *parent)
     auto *findShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
     connect(findShortcut, &QShortcut::activated, this, &MainWindow::showSearch);
 
+    auto *replaceShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_R), this);
+    connect(replaceShortcut, &QShortcut::activated, this, &MainWindow::showSearchReplace);
+
     auto *fileSearchShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N), this);
     connect(fileSearchShortcut, &QShortcut::activated, this, &MainWindow::showFileSearch);
 
@@ -1177,6 +1180,18 @@ void MainWindow::showSearch()
         setMarkdownMode("split");
     if (m_activeGroup)
         m_activeGroup->activateSearch();
+}
+
+void MainWindow::showSearchReplace()
+{
+    auto *editor = currentEditor();
+    if (!editor)
+        return;
+    QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
+    if (isMarkdownFile(suffix) && m_settings->value("markdown_view_mode") == "preview")
+        setMarkdownMode("split");
+    if (m_activeGroup)
+        m_activeGroup->activateSearchReplace();
 }
 
 void MainWindow::showFileSearch()

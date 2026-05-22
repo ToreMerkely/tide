@@ -118,6 +118,12 @@ void EditorGroup::activateSearch()
     m_searchBar->activate();
 }
 
+void EditorGroup::activateSearchReplace()
+{
+    m_searchBar->setEditor(qobject_cast<QPlainTextEdit *>(currentWidget()));
+    m_searchBar->activate(true);
+}
+
 void EditorGroup::setActiveLook(bool active)
 {
     if (auto *bar = qobject_cast<ActiveUnderlineTabBar *>(m_tabBar))

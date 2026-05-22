@@ -15,7 +15,7 @@ public:
     explicit SearchBar(QWidget *parent = nullptr);
 
     void setEditor(QPlainTextEdit *editor);
-    void activate();
+    void activate(bool withReplace = false);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -27,12 +27,17 @@ private slots:
     void onTextChanged(const QString &text);
     void findNext();
     void findPrevious();
+    void replaceCurrent();
+    void replaceAll();
 
 private:
     void highlightMatches();
     void goToMatch(int index);
+    void setReplaceVisible(bool visible);
 
     QLineEdit *m_input;
+    QLineEdit *m_replaceInput = nullptr;
+    QWidget *m_replaceRow = nullptr;
     QLabel *m_matchLabel;
     QPushButton *m_caseBtn = nullptr;
     QPushButton *m_regexBtn = nullptr;

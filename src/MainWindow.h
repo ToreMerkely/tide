@@ -44,6 +44,7 @@ private slots:
     void navigateBack();
     void navigateForward();
     void showSearch();
+    void showSearchReplace();
     void showFileSearch();
     void showSymbolSearch();
     void saveAll();

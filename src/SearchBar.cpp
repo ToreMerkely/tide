@@ -3,6 +3,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QPlainTextEdit>
 #include <QTextDocument>
 #include <QKeyEvent>
@@ -11,7 +12,12 @@
 SearchBar::SearchBar(QWidget *parent)
     : QWidget(parent)
 {
-    auto *layout = new QHBoxLayout(this);
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+
+    auto *findRow = new QWidget;
+    auto *layout = new QHBoxLayout(findRow);
     layout->setContentsMargins(4, 2, 4, 2);
 
     m_input = new QLineEdit;
@@ -63,6 +69,33 @@ SearchBar::SearchBar(QWidget *parent)
     layout->addWidget(closeBtn);
     layout->addStretch();
 
+    m_replaceRow = new QWidget;
+    auto *rlayout = new QHBoxLayout(m_replaceRow);
+    rlayout->setContentsMargins(4, 0, 4, 2);
+
+    m_replaceInput = new QLineEdit;
+    m_replaceInput->setPlaceholderText("Replace...");
+    m_replaceInput->setMinimumWidth(200);
+    m_replaceInput->installEventFilter(this);
+
+    auto *replaceBtn = new QPushButton("Replace");
+    replaceBtn->setFocusPolicy(Qt::NoFocus);
+    replaceBtn->setToolTip("Replace current match (Enter)");
+
+    auto *replaceAllBtn = new QPushButton("Replace All");
+    replaceAllBtn->setFocusPolicy(Qt::NoFocus);
+    replaceAllBtn->setToolTip("Replace all matches (Shift+Enter)");
+
+    rlayout->addWidget(m_replaceInput);
+    rlayout->addWidget(replaceBtn);
+    rlayout->addWidget(replaceAllBtn);
+    rlayout->addStretch();
+
+    m_replaceRow->hide();
+
+    outer->addWidget(findRow);
+    outer->addWidget(m_replaceRow);
+
     connect(m_input, &QLineEdit::textChanged, this, &SearchBar::onTextChanged);
     auto rerun = [this](bool) { onTextChanged(m_input->text()); };
     connect(m_caseBtn, &QPushButton::toggled, this, rerun);
@@ -70,6 +103,8 @@ SearchBar::SearchBar(QWidget *parent)
     connect(prevBtn, &QPushButton::clicked, this, &SearchBar::findPrevious);
     connect(nextBtn, &QPushButton::clicked, this, &SearchBar::findNext);
     connect(closeBtn, &QPushButton::clicked, this, &SearchBar::close);
+    connect(replaceBtn, &QPushButton::clicked, this, &SearchBar::replaceCurrent);
+    connect(replaceAllBtn, &QPushButton::clicked, this, &SearchBar::replaceAll);
 
     hide();
 }
@@ -79,7 +114,7 @@ void SearchBar::setEditor(QPlainTextEdit *editor)
     m_editor = editor;
 }
 
-void SearchBar::activate()
+void SearchBar::activate(bool withReplace)
 {
     show();
     if (m_editor) {
@@ -87,9 +122,23 @@ void SearchBar::activate()
         if (!selection.isEmpty() && !selection.contains(QChar::ParagraphSeparator))
             m_input->setText(selection);
     }
-    m_input->setFocus();
-    m_input->selectAll();
-    onTextChanged(m_input->text());
+    if (withReplace) {
+        setReplaceVisible(true);
+        if (!m_input->text().isEmpty() && m_matches.isEmpty())
+            onTextChanged(m_input->text());
+        if (m_input->text().isEmpty()) {
+            m_input->setFocus();
+            m_input->selectAll();
+        } else {
+            m_replaceInput->setFocus();
+            m_replaceInput->selectAll();
+            onTextChanged(m_input->text());
+        }
+    } else {
+        m_input->setFocus();
+        m_input->selectAll();
+        onTextChanged(m_input->text());
+    }
 }
 
 bool SearchBar::eventFilter(QObject *obj, QEvent *event)
@@ -105,6 +154,20 @@ bool SearchBar::eventFilter(QObject *obj, QEvent *event)
                 findPrevious();
             else
                 findNext();
+            return true;
+        }
+    }
+    if (obj == m_replaceInput && event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Escape) {
+            close();
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter) {
+            if (keyEvent->modifiers() & Qt::ShiftModifier)
+                replaceAll();
+            else
+                replaceCurrent();
             return true;
         }
     }
@@ -194,10 +257,96 @@ void SearchBar::findPrevious()
 void SearchBar::close()
 {
     hide();
+    setReplaceVisible(false);
     if (m_editor) {
         m_editor->setExtraSelections({});
         m_editor->setFocus();
     }
+}
+
+void SearchBar::setReplaceVisible(bool visible)
+{
+    if (m_replaceRow)
+        m_replaceRow->setVisible(visible);
+}
+
+void SearchBar::replaceCurrent()
+{
+    if (!m_editor || m_matches.isEmpty() || m_currentMatch < 0)
+        return;
+
+    const Match m = m_matches[m_currentMatch];
+    const QString replacement = m_replaceInput->text();
+    const bool regex = m_regexBtn && m_regexBtn->isChecked();
+    const bool caseSensitive = m_caseBtn && m_caseBtn->isChecked();
+
+    QTextCursor cursor(m_editor->document());
+    cursor.setPosition(m.start);
+    cursor.setPosition(m.start + m.length, QTextCursor::KeepAnchor);
+
+    QString output = replacement;
+    if (regex) {
+        QRegularExpression::PatternOptions opts;
+        if (!caseSensitive)
+            opts |= QRegularExpression::CaseInsensitiveOption;
+        QRegularExpression re(m_input->text(), opts);
+        if (re.isValid()) {
+            QString matched = cursor.selectedText();
+            output = matched;
+            output.replace(re, replacement);
+        }
+    }
+
+    cursor.insertText(output);
+
+    int nextIdx = m_currentMatch;
+    onTextChanged(m_input->text());
+    if (!m_matches.isEmpty()) {
+        if (nextIdx >= m_matches.size())
+            nextIdx = 0;
+        m_currentMatch = nextIdx;
+        goToMatch(m_currentMatch);
+    }
+    m_replaceInput->setFocus();
+}
+
+void SearchBar::replaceAll()
+{
+    if (!m_editor || m_matches.isEmpty())
+        return;
+
+    const QString replacement = m_replaceInput->text();
+    const bool regex = m_regexBtn && m_regexBtn->isChecked();
+    const bool caseSensitive = m_caseBtn && m_caseBtn->isChecked();
+
+    QRegularExpression re;
+    if (regex) {
+        QRegularExpression::PatternOptions opts;
+        if (!caseSensitive)
+            opts |= QRegularExpression::CaseInsensitiveOption;
+        re = QRegularExpression(m_input->text(), opts);
+        if (!re.isValid())
+            return;
+    }
+
+    QTextCursor cursor(m_editor->document());
+    cursor.beginEditBlock();
+    for (int i = m_matches.size() - 1; i >= 0; --i) {
+        const Match &m = m_matches[i];
+        cursor.setPosition(m.start);
+        cursor.setPosition(m.start + m.length, QTextCursor::KeepAnchor);
+        QString output = replacement;
+        if (regex) {
+            QString matched = cursor.selectedText();
+            output = matched;
+            output.replace(re, replacement);
+        }
+        cursor.insertText(output);
+    }
+    cursor.endEditBlock();
+
+    onTextChanged(m_input->text());
+    m_replaceInput->setFocus();
 }
 
 void SearchBar::highlightMatches()
