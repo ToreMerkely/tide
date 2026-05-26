@@ -8,6 +8,7 @@
 #include <QTextDocument>
 #include <QKeyEvent>
 #include <QRegularExpression>
+#include <QTimer>
 
 SearchBar::SearchBar(QWidget *parent)
     : QWidget(parent)
@@ -170,6 +171,10 @@ bool SearchBar::eventFilter(QObject *obj, QEvent *event)
                 replaceCurrent();
             return true;
         }
+    }
+    if ((obj == m_input || obj == m_replaceInput)
+        && (event->type() == QEvent::FocusIn || event->type() == QEvent::FocusOut)) {
+        QTimer::singleShot(0, this, [this]() { highlightMatches(); });
     }
     return QWidget::eventFilter(obj, event);
 }
@@ -368,6 +373,19 @@ void SearchBar::highlightMatches()
         selections.append(sel);
     }
 
+    const bool barHasFocus = (m_input && m_input->hasFocus())
+        || (m_replaceInput && m_replaceInput->hasFocus());
+    if (barHasFocus && m_currentMatch >= 0 && m_currentMatch < m_matches.size()) {
+        const Match &m = m_matches[m_currentMatch];
+        QTextEdit::ExtraSelection current;
+        current.format.setBackground(QColor(0x5A, 0x89, 0x5A));
+        QTextCursor cursor(m_editor->document());
+        cursor.setPosition(m.start);
+        cursor.setPosition(m.start + m.length, QTextCursor::KeepAnchor);
+        current.cursor = cursor;
+        selections.append(current);
+    }
+
     m_editor->setExtraSelections(selections);
 }
 
@@ -385,14 +403,5 @@ void SearchBar::goToMatch(int index)
 
     m_matchLabel->setText(QString("%1 of %2").arg(index + 1).arg(m_matches.size()));
 
-    // Re-highlight so current match stands out
     highlightMatches();
-
-    // Override current match with brighter highlight
-    QList<QTextEdit::ExtraSelection> sels = m_editor->extraSelections();
-    QTextEdit::ExtraSelection current;
-    current.format.setBackground(QColor(0x5A, 0x89, 0x5A));
-    current.cursor = cursor;
-    sels.append(current);
-    m_editor->setExtraSelections(sels);
 }
