@@ -91,6 +91,7 @@ private:
     static bool isDockerfile(const QString &fileName, const QString &suffix);
     static bool isTerraformFile(const QString &suffix);
     static bool isGoFile(const QString &fileName, const QString &suffix);
+    static bool isImageFile(const QString &suffix);
     void ensureGoLsp();
 
     void applyMarkdownMode();

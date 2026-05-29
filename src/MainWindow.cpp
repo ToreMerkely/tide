@@ -28,6 +28,7 @@
 #include <QSplitter>
 #include <QTreeView>
 #include "CodeEditor.h"
+#include "ImageViewer.h"
 #include <QFileSystemModel>
 #include <QDir>
 #include <QFile>
@@ -1516,6 +1517,24 @@ void MainWindow::loadFile(const QString &path, int line)
         }
     }
 
+    if (isImageFile(QFileInfo(path).suffix())) {
+        auto *viewer = new ImageViewer;
+        if (!viewer->load(path)) {
+            delete viewer;
+            statusBar()->showMessage(
+                QString("Cannot display image: %1").arg(QFileInfo(path).fileName()),
+                3000);
+            return;
+        }
+        viewer->setProperty("filePath", path);
+        QString name = QFileInfo(path).fileName();
+        int index = m_activeGroup->addTab(viewer, name);
+        m_activeGroup->setCurrentIndex(index);
+        if (m_fileWatcher && !m_fileWatcher->files().contains(path))
+            m_fileWatcher->addPath(path);
+        return;
+    }
+
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
@@ -2256,6 +2275,13 @@ bool MainWindow::isGoFile(const QString &fileName, const QString &suffix)
 {
     Q_UNUSED(fileName);
     return suffix == "go";
+}
+
+bool MainWindow::isImageFile(const QString &suffix)
+{
+    QString s = suffix.toLower();
+    return s == "png" || s == "svg" || s == "jpg" || s == "jpeg"
+        || s == "gif" || s == "bmp" || s == "webp";
 }
 
 void MainWindow::setMarkdownMode(const QString &mode)
