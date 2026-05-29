@@ -29,6 +29,7 @@
 #include <QTreeView>
 #include "CodeEditor.h"
 #include "ImageViewer.h"
+#include "PdfViewer.h"
 #include <QFileSystemModel>
 #include <QDir>
 #include <QFile>
@@ -1535,6 +1536,24 @@ void MainWindow::loadFile(const QString &path, int line)
         return;
     }
 
+    if (isPdfFile(QFileInfo(path).suffix())) {
+        auto *viewer = new PdfViewer;
+        if (!viewer->load(path)) {
+            delete viewer;
+            statusBar()->showMessage(
+                QString("Cannot display PDF: %1").arg(QFileInfo(path).fileName()),
+                3000);
+            return;
+        }
+        viewer->setProperty("filePath", path);
+        QString name = QFileInfo(path).fileName();
+        int index = m_activeGroup->addTab(viewer, name);
+        m_activeGroup->setCurrentIndex(index);
+        if (m_fileWatcher && !m_fileWatcher->files().contains(path))
+            m_fileWatcher->addPath(path);
+        return;
+    }
+
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
@@ -2282,6 +2301,11 @@ bool MainWindow::isImageFile(const QString &suffix)
     QString s = suffix.toLower();
     return s == "png" || s == "svg" || s == "jpg" || s == "jpeg"
         || s == "gif" || s == "bmp" || s == "webp";
+}
+
+bool MainWindow::isPdfFile(const QString &suffix)
+{
+    return suffix.compare("pdf", Qt::CaseInsensitive) == 0;
 }
 
 void MainWindow::setMarkdownMode(const QString &mode)

@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets PdfWidgets)
 
 add_executable(tide
     src/main.cpp
@@ -38,8 +38,9 @@ add_executable(tide
     src/FileIconProvider.cpp
     src/IgnoreAwareModel.cpp
     src/ImageViewer.cpp
+    src/PdfViewer.cpp
     resources/icons.qrc
     resources/app.qrc
 )
 
-target_link_libraries(tide PRIVATE Qt6::Widgets)
+target_link_libraries(tide PRIVATE Qt6::Widgets Qt6::PdfWidgets)

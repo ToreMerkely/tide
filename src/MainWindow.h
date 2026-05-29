@@ -92,6 +92,7 @@ private:
     static bool isTerraformFile(const QString &suffix);
     static bool isGoFile(const QString &fileName, const QString &suffix);
     static bool isImageFile(const QString &suffix);
+    static bool isPdfFile(const QString &suffix);
     void ensureGoLsp();
 
     void applyMarkdownMode();
