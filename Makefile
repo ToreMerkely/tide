@@ -8,7 +8,7 @@ build:
 	@ln -sf $(BUILD_DIR)/compile_commands.json compile_commands.json
 
 run: build
-	@./$(BUILD_DIR)/tide
+	@QT_LOGGING_RULES="qt.text.font.match.warning=false" ./$(BUILD_DIR)/tide
 
 clean:
 	@rm -rf $(BUILD_DIR)
