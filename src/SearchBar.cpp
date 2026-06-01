@@ -112,7 +112,15 @@ SearchBar::SearchBar(QWidget *parent)
 
 void SearchBar::setEditor(QPlainTextEdit *editor)
 {
+    if (m_editor == editor)
+        return;
     m_editor = editor;
+    m_matches.clear();
+    m_currentMatch = -1;
+    if (isVisible() && !m_input->text().isEmpty())
+        onTextChanged(m_input->text());   // re-search the new document
+    else
+        m_matchLabel->setText("");
 }
 
 void SearchBar::activate(bool withReplace)
