@@ -50,6 +50,7 @@ private slots:
     void saveAll();
     void onEditorModified();
     void onFileChangedOnDisk(const QString &path);
+    void reloadFileFromDisk(const QString &path);
     void showTabContextMenu(const QPoint &pos);
     void onEditorZoom(int delta);
     void revealCurrentFileInTree();
@@ -133,6 +134,8 @@ private:
     LspClient *m_goLsp = nullptr;
     bool m_goLspPromptShown = false;
     QFileSystemWatcher *m_fileWatcher = nullptr;
+    QSet<QString> m_pendingReloads;
+    QTimer *m_reloadDebounce = nullptr;
     QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;
     Settings *m_settings;

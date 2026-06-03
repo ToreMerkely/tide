@@ -579,6 +579,19 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_fileWatcher, &QFileSystemWatcher::fileChanged,
             this, &MainWindow::onFileChangedOnDisk);
 
+    // Tools like `git checkout` replace files in several steps, so the watcher
+    // fires while the file is still empty or half-written. Coalesce rapid
+    // signals behind a short timer and only read once the writes settle.
+    m_reloadDebounce = new QTimer(this);
+    m_reloadDebounce->setSingleShot(true);
+    m_reloadDebounce->setInterval(150);
+    connect(m_reloadDebounce, &QTimer::timeout, this, [this]() {
+        const QSet<QString> paths = m_pendingReloads;
+        m_pendingReloads.clear();
+        for (const QString &p : paths)
+            reloadFileFromDisk(p);
+    });
+
     {
         QString headPath = QDir::currentPath() + "/.git/HEAD";
         if (QFile::exists(headPath)) {
@@ -996,6 +1009,15 @@ void MainWindow::onFileChangedOnDisk(const QString &path)
         }
     });
 
+    // Coalesce rapid signals (e.g. git checkout's multi-step file replace) and
+    // read the final content once the writes settle, instead of reacting to a
+    // transient empty/half-written state.
+    m_pendingReloads.insert(path);
+    m_reloadDebounce->start();
+}
+
+void MainWindow::reloadFileFromDisk(const QString &path)
+{
     if (!QFile::exists(path)) {
         // Could be a true delete, or an atomic-replace save mid-rename.
         // Re-check after a short delay; if still gone, close the tabs.
