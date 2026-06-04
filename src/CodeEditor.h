@@ -42,13 +42,20 @@ private:
     void clearMultiCursors();
     void drawMultiCursors();
     void updateMultiCursorSelections();
+    void rebuildBlockSelection();
 
     LineNumberArea *m_lineNumberArea;
 
     // Multi-cursor state
     QVector<QTextCursor> m_extraCursors;
-    int m_multiCursorCol = -1;
     bool m_multiCursorMode = false;
+
+    // Rectangular block-selection corners (line/column).
+    // The anchor corner is fixed at mode entry; the moving corner follows the arrow keys.
+    int m_blockAnchorLine = -1;
+    int m_blockAnchorCol = -1;
+    int m_blockCurLine = -1;
+    int m_blockCurCol = -1;
     QTimer *m_cursorBlinkTimer;
     bool m_cursorVisible = true;
 

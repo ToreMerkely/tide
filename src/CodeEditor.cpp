@@ -310,7 +310,8 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
             // Double-Ctrl detected — enter multi-cursor mode
             m_multiCursorMode = true;
             QTextCursor cursor = textCursor();
-            m_multiCursorCol = cursor.columnNumber();
+            m_blockAnchorLine = m_blockCurLine = cursor.blockNumber();
+            m_blockAnchorCol = m_blockCurCol = cursor.positionInBlock();
             m_ctrlWasReleased = false;
             m_cursorBlinkTimer->start();
             m_cursorVisible = true;
@@ -325,57 +326,29 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     // Multi-cursor mode — Ctrl+Up/Down adds cursors
     if (m_multiCursorMode && (event->modifiers() & Qt::ControlModifier)) {
         if (event->key() == Qt::Key_Down) {
-            // Add cursor on line below the last extra cursor (or main cursor)
-            int lastLine;
-            if (m_extraCursors.isEmpty())
-                lastLine = textCursor().blockNumber();
-            else
-                lastLine = m_extraCursors.last().blockNumber();
-
-            QTextBlock block = document()->findBlockByNumber(lastLine + 1);
-            if (block.isValid()) {
-                QTextCursor cur(block);
-                int col = std::min(m_multiCursorCol, (int)block.text().length());
-                cur.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, col);
-                m_extraCursors.append(cur);
-                viewport()->update();
+            if (m_blockCurLine < document()->blockCount() - 1) {
+                ++m_blockCurLine;
+                rebuildBlockSelection();
             }
             return;
         }
         if (event->key() == Qt::Key_Up) {
-            // Add cursor on line above the first extra cursor (or main cursor)
-            int firstLine;
-            if (m_extraCursors.isEmpty())
-                firstLine = textCursor().blockNumber();
-            else
-                firstLine = m_extraCursors.first().blockNumber();
-
-            QTextBlock block = document()->findBlockByNumber(firstLine - 1);
-            if (block.isValid()) {
-                QTextCursor cur(block);
-                int col = std::min(m_multiCursorCol, (int)block.text().length());
-                cur.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, col);
-                m_extraCursors.prepend(cur);
-                viewport()->update();
+            if (m_blockCurLine > 0) {
+                --m_blockCurLine;
+                rebuildBlockSelection();
             }
             return;
         }
         if (event->key() == Qt::Key_Right) {
-            QTextCursor main = textCursor();
-            main.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
-            setTextCursor(main);
-            for (QTextCursor &cur : m_extraCursors)
-                cur.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
-            updateMultiCursorSelections();
+            ++m_blockCurCol;
+            rebuildBlockSelection();
             return;
         }
         if (event->key() == Qt::Key_Left) {
-            QTextCursor main = textCursor();
-            main.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor);
-            setTextCursor(main);
-            for (QTextCursor &cur : m_extraCursors)
-                cur.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor);
-            updateMultiCursorSelections();
+            if (m_blockCurCol > 0) {
+                --m_blockCurCol;
+                rebuildBlockSelection();
+            }
             return;
         }
         if (event->key() == Qt::Key_Escape) {
@@ -637,6 +610,36 @@ void CodeEditor::drawMultiCursors()
     }
 }
 
+void CodeEditor::rebuildBlockSelection()
+{
+    const int topLine = std::min(m_blockAnchorLine, m_blockCurLine);
+    const int bottomLine = std::max(m_blockAnchorLine, m_blockCurLine);
+
+    m_extraCursors.clear();
+    for (int line = topLine; line <= bottomLine; ++line) {
+        QTextBlock block = document()->findBlockByNumber(line);
+        if (!block.isValid())
+            continue;
+
+        // Selection spans the anchor and moving columns, clamped to this line's length
+        const int len = block.text().length();
+        const int anchorPos = block.position() + std::min(m_blockAnchorCol, len);
+        const int curPos = block.position() + std::min(m_blockCurCol, len);
+
+        QTextCursor cur(document());
+        cur.setPosition(anchorPos);
+        cur.setPosition(curPos, QTextCursor::KeepAnchor);
+
+        // The main cursor lives on the moving line; the rest are extra cursors
+        if (line == m_blockCurLine)
+            setTextCursor(cur);
+        else
+            m_extraCursors.append(cur);
+    }
+
+    updateMultiCursorSelections();
+}
+
 void CodeEditor::updateMultiCursorSelections()
 {
     QList<QTextEdit::ExtraSelection> selections;
@@ -661,7 +664,8 @@ void CodeEditor::clearMultiCursors()
 {
     m_extraCursors.clear();
     m_multiCursorMode = false;
-    m_multiCursorCol = -1;
+    m_blockAnchorLine = m_blockAnchorCol = -1;
+    m_blockCurLine = m_blockCurCol = -1;
     m_cursorBlinkTimer->stop();
     m_cursorVisible = true;
     setCursorWidth(1); // Restore native cursor
