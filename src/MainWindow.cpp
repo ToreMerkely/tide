@@ -1230,7 +1230,13 @@ void MainWindow::showSearchReplace()
 
 void MainWindow::showFileSearch()
 {
-    FileSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
+    QString initialQuery;
+    if (auto *editor = currentEditor()) {
+        QString selection = editor->textCursor().selectedText();
+        if (!selection.isEmpty() && !selection.contains(QChar::ParagraphSeparator))
+            initialQuery = selection;
+    }
+    FileSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, initialQuery, this);
     if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
         loadFile(dialog.selectedFile());
 }

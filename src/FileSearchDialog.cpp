@@ -12,6 +12,7 @@
 
 FileSearchDialog::FileSearchDialog(const QString &rootPath,
                                    const QSet<QString> &ignoredAbsolutePaths,
+                                   const QString &initialQuery,
                                    QWidget *parent)
     : QDialog(parent)
     , m_rootPath(rootPath)
@@ -23,6 +24,10 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath,
     m_input = new QLineEdit;
     m_input->setPlaceholderText("Search for file...");
     m_input->installEventFilter(this);
+    if (!initialQuery.isEmpty()) {
+        m_input->setText(initialQuery);
+        m_input->selectAll();
+    }
 
     m_list = new QListWidget;
     m_list->addItem("Scanning project...");

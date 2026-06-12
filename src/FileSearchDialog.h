@@ -14,6 +14,7 @@ class FileSearchDialog : public QDialog {
 public:
     explicit FileSearchDialog(const QString &rootPath,
                               const QSet<QString> &ignoredAbsolutePaths = {},
+                              const QString &initialQuery = {},
                               QWidget *parent = nullptr);
     QString selectedFile() const;
 
