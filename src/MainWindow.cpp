@@ -1061,6 +1061,16 @@ void MainWindow::reloadFileFromDisk(const QString &path)
         return;
     }
 
+    // Image/PDF viewers just re-read the file; their load() repaints.
+    for (EditorGroup *g : m_groups) {
+        int idx = g->indexOfPath(path);
+        if (idx < 0) continue;
+        if (auto *v = qobject_cast<ImageViewer *>(g->widget(idx)))
+            v->load(path);
+        else if (auto *v = qobject_cast<PdfViewer *>(g->widget(idx)))
+            v->load(path);
+    }
+
     // Collect all editors in any group that have this path open
     struct State { CodeEditor *editor; int line; int col; int scroll; };
     QList<State> states;
