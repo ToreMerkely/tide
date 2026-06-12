@@ -29,5 +29,7 @@
         <file>icons/toml.svg</file>
         <file>icons/feature.svg</file>
         <file>icons/go.svg</file>
+        <file>icons/image.svg</file>
+        <file>icons/pdf.svg</file>
     </qresource>
 </RCC>

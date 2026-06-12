@@ -77,6 +77,11 @@ QIcon FileIconProvider::icon(const QFileInfo &info) const
     if (suffix == "go" || name.compare("go.mod", Qt::CaseInsensitive) == 0
         || name.compare("go.sum", Qt::CaseInsensitive) == 0)
         return QIcon(":/icons/icons/go.svg");
+    if (suffix == "png" || suffix == "jpg" || suffix == "jpeg"
+        || suffix == "gif" || suffix == "bmp" || suffix == "webp")
+        return QIcon(":/icons/icons/image.svg");
+    if (suffix == "pdf")
+        return QIcon(":/icons/icons/pdf.svg");
 
     return QIcon(":/icons/icons/text.svg");
 }
