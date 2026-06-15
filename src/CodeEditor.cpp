@@ -435,6 +435,11 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         }
     }
 
+    // Any key that reaches normal handling while a block/rectangle selection is
+    // still active (e.g. a plain arrow key) ends that mode and restores the caret.
+    if (m_cursorBlinkTimer->isActive())
+        clearMultiCursors();
+
     // Normal key handling below
     QTextCursor cursor = textCursor();
 
@@ -518,6 +523,14 @@ void CodeEditor::keyReleaseEvent(QKeyEvent *event)
         m_ctrlWasReleased = true;
     }
     QPlainTextEdit::keyReleaseEvent(event);
+}
+
+void CodeEditor::mousePressEvent(QMouseEvent *event)
+{
+    // A click ends any block/rectangle selection and restores the native caret.
+    if (m_cursorBlinkTimer->isActive())
+        clearMultiCursors();
+    QPlainTextEdit::mousePressEvent(event);
 }
 
 static int leadingIndentSpaces(const QString &line)
