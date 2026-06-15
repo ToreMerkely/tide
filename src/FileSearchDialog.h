@@ -16,7 +16,7 @@ public:
                               const QSet<QString> &ignoredAbsolutePaths = {},
                               const QString &initialQuery = {},
                               QWidget *parent = nullptr);
-    QString selectedFile() const;
+    QStringList selectedFiles() const;
 
 private slots:
     void onTextChanged(const QString &text);
@@ -24,6 +24,7 @@ private slots:
 
 private:
     void scanFiles(const QString &dir, const QString &prefix);
+    void acceptSelection();
     void populate();
     bool eventFilter(QObject *obj, QEvent *event) override;
 
@@ -32,7 +33,7 @@ private:
     QString m_rootPath;
     QSet<QString> m_ignoredAbsolute;
     QStringList m_allFiles;
-    QString m_selectedFile;
+    QStringList m_selectedFiles;
     bool m_populated = false;
 };
 

@@ -1237,8 +1237,11 @@ void MainWindow::showFileSearch()
             initialQuery = selection;
     }
     FileSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, initialQuery, this);
-    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
-        loadFile(dialog.selectedFile());
+    if (dialog.exec() == QDialog::Accepted) {
+        const QStringList files = dialog.selectedFiles();
+        for (const QString &file : files)
+            loadFile(file);
+    }
 }
 
 void MainWindow::showSymbolSearch()

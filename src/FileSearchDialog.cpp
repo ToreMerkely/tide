@@ -1,6 +1,8 @@
 #include "FileSearchDialog.h"
 #include <QLineEdit>
 #include <QListWidget>
+#include <QAbstractItemView>
+#include <QItemSelectionModel>
 #include <QVBoxLayout>
 #include <QDir>
 #include <QDirIterator>
@@ -30,6 +32,7 @@ FileSearchDialog::FileSearchDialog(const QString &rootPath,
     }
 
     m_list = new QListWidget;
+    m_list->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_list->addItem("Scanning project...");
 
     auto *layout = new QVBoxLayout(this);
@@ -86,9 +89,9 @@ void FileSearchDialog::populate()
     onTextChanged(m_input->text());
 }
 
-QString FileSearchDialog::selectedFile() const
+QStringList FileSearchDialog::selectedFiles() const
 {
-    return m_selectedFile;
+    return m_selectedFiles;
 }
 
 void FileSearchDialog::onTextChanged(const QString &text)
@@ -171,9 +174,31 @@ void FileSearchDialog::onItemDoubleClicked()
 {
     auto *item = m_list->currentItem();
     if (item) {
-        m_selectedFile = m_rootPath + "/" + item->text();
+        m_selectedFiles = {m_rootPath + "/" + item->text()};
         accept();
     }
+}
+
+void FileSearchDialog::acceptSelection()
+{
+    // Collect every selected row in list order; fall back to the current row.
+    QList<int> rows;
+    const auto items = m_list->selectedItems();
+    for (QListWidgetItem *item : items)
+        rows.append(m_list->row(item));
+    std::sort(rows.begin(), rows.end());
+
+    m_selectedFiles.clear();
+    for (int row : rows)
+        m_selectedFiles.append(m_rootPath + "/" + m_list->item(row)->text());
+
+    if (m_selectedFiles.isEmpty()) {
+        if (auto *cur = m_list->currentItem())
+            m_selectedFiles.append(m_rootPath + "/" + cur->text());
+    }
+
+    if (!m_selectedFiles.isEmpty())
+        accept();
 }
 
 bool FileSearchDialog::eventFilter(QObject *obj, QEvent *event)
@@ -181,24 +206,25 @@ bool FileSearchDialog::eventFilter(QObject *obj, QEvent *event)
     if (obj == m_input && event->type() == QEvent::KeyPress) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
 
+        const bool shift = keyEvent->modifiers() & Qt::ShiftModifier;
         if (keyEvent->key() == Qt::Key_Down) {
             int row = m_list->currentRow();
             if (row < m_list->count() - 1)
-                m_list->setCurrentRow(row + 1);
+                // Shift extends the selection downward; a plain Down collapses
+                // back to a single selection.
+                m_list->setCurrentRow(row + 1, shift ? QItemSelectionModel::Select
+                                                     : QItemSelectionModel::ClearAndSelect);
             return true;
         }
         if (keyEvent->key() == Qt::Key_Up) {
             int row = m_list->currentRow();
             if (row > 0)
-                m_list->setCurrentRow(row - 1);
+                m_list->setCurrentRow(row - 1, shift ? QItemSelectionModel::Select
+                                                     : QItemSelectionModel::ClearAndSelect);
             return true;
         }
         if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter) {
-            auto *item = m_list->currentItem();
-            if (item) {
-                m_selectedFile = m_rootPath + "/" + item->text();
-                accept();
-            }
+            acceptSelection();
             return true;
         }
         if (keyEvent->key() == Qt::Key_Escape) {
