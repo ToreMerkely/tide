@@ -240,7 +240,11 @@ void SearchBar::onTextChanged(const QString &text)
         int cursorPos = m_editor->textCursor().position();
         m_currentMatch = 0;
         for (int i = 0; i < m_matches.size(); ++i) {
-            if (m_matches[i].start >= cursorPos) {
+            // Use the match end so that when the cursor sits at the end of the
+            // current match (where goToMatch leaves it), re-running the search
+            // — e.g. after switching tabs — stays on that match instead of
+            // advancing to the next one.
+            if (m_matches[i].start + m_matches[i].length >= cursorPos) {
                 m_currentMatch = i;
                 break;
             }
