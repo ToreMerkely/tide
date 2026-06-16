@@ -64,7 +64,9 @@ QIcon FileIconProvider::icon(const QFileInfo &info) const
         return QIcon(":/icons/icons/javascript.svg");
     if (suffix == "ts" || suffix == "tsx")
         return QIcon(":/icons/icons/typescript.svg");
-    if (suffix == "xml" || suffix == "svg" || suffix == "xsd"
+    if (suffix == "svg")
+        return QIcon(":/icons/icons/svg.svg");
+    if (suffix == "xml" || suffix == "xsd"
         || suffix == "xsl" || suffix == "plist")
         return QIcon(":/icons/icons/xml.svg");
     if (suffix == "toml" || suffix == "ini" || suffix == "cfg"

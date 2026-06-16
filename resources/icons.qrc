@@ -23,6 +23,7 @@
         <file>icons/javascript.svg</file>
         <file>icons/typescript.svg</file>
         <file>icons/xml.svg</file>
+        <file>icons/svg.svg</file>
         <file>icons/env.svg</file>
         <file>icons/dockerfile.svg</file>
         <file>icons/terraform.svg</file>
