@@ -103,24 +103,30 @@ void FileSearchDialog::onTextChanged(const QString &text)
         return;
     }
 
-    if (text.isEmpty()) {
+    // Strip a leading "./" (or repeated "././") so a path-style query like
+    // "./bin/foo" matches the relative paths we store ("bin/foo").
+    QString query = text;
+    while (query.startsWith("./"))
+        query.remove(0, 2);
+
+    if (query.isEmpty()) {
         m_list->addItems(m_allFiles);
         if (m_list->count() > 0)
             m_list->setCurrentRow(0);
         return;
     }
 
-    if (text.contains('*') || text.contains('?')) {
+    if (query.contains('*') || query.contains('?')) {
         // Wrap with implicit '*' on both ends so partial typing (e.g. "out*m")
         // shows progressive matches rather than nothing until the user reaches
         // a string that happens to end the basename.
-        QString padded = text;
+        QString padded = query;
         if (!padded.startsWith('*')) padded.prepend('*');
         if (!padded.endsWith('*'))   padded.append('*');
         QRegularExpression re(
             QRegularExpression::wildcardToRegularExpression(padded),
             QRegularExpression::CaseInsensitiveOption);
-        bool matchFullPath = text.contains('/');
+        bool matchFullPath = query.contains('/');
         for (const QString &file : m_allFiles) {
             QString target = matchFullPath ? file : QFileInfo(file).fileName();
             if (re.match(target).hasMatch())
@@ -134,7 +140,7 @@ void FileSearchDialog::onTextChanged(const QString &text)
     // Plain query: substring match only, ranked by where the hit lands
     // (basename-prefix > basename-anywhere > path-anywhere). Use globs (*, ?)
     // for looser matching.
-    const QString lower = text.toLower();
+    const QString lower = query.toLower();
 
     struct Scored { int score; QString path; };
     QList<Scored> scored;
