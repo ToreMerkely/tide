@@ -114,7 +114,13 @@ void SearchBar::setEditor(QPlainTextEdit *editor)
 {
     if (m_editor == editor)
         return;
+    if (m_editor)
+        disconnect(m_editor->document(), &QTextDocument::contentsChanged,
+                   this, &SearchBar::onDocumentChanged);
     m_editor = editor;
+    if (m_editor)
+        connect(m_editor->document(), &QTextDocument::contentsChanged,
+                this, &SearchBar::onDocumentChanged);
     m_matches.clear();
     m_currentMatch = -1;
     if (isVisible() && !m_input->text().isEmpty())
@@ -187,19 +193,17 @@ bool SearchBar::eventFilter(QObject *obj, QEvent *event)
     return QWidget::eventFilter(obj, event);
 }
 
-void SearchBar::onTextChanged(const QString &text)
+bool SearchBar::collectMatches()
 {
     m_matches.clear();
-    m_currentMatch = -1;
 
-    if (!m_editor || text.isEmpty()) {
-        m_matchLabel->setText("");
-        if (m_editor)
-            m_editor->setExtraSelections({});
-        return;
-    }
+    if (!m_editor)
+        return true;
 
-    // Find all matches
+    const QString text = m_input->text();
+    if (text.isEmpty())
+        return true;
+
     QTextDocument *doc = m_editor->document();
     QTextCursor cursor(doc);
     const bool caseSensitive = m_caseBtn && m_caseBtn->isChecked();
@@ -210,11 +214,8 @@ void SearchBar::onTextChanged(const QString &text)
         if (!caseSensitive)
             opts |= QRegularExpression::CaseInsensitiveOption;
         QRegularExpression re(text, opts);
-        if (!re.isValid()) {
-            m_matchLabel->setText("(bad regex)");
-            m_editor->setExtraSelections({});
-            return;
-        }
+        if (!re.isValid())
+            return false;
         while (true) {
             cursor = doc->find(re, cursor);
             if (cursor.isNull())
@@ -231,6 +232,27 @@ void SearchBar::onTextChanged(const QString &text)
                 break;
             m_matches.append({cursor.selectionStart(), cursor.selectionEnd() - cursor.selectionStart()});
         }
+    }
+
+    return true;
+}
+
+void SearchBar::onTextChanged(const QString &text)
+{
+    m_currentMatch = -1;
+
+    if (!m_editor || text.isEmpty()) {
+        m_matches.clear();
+        m_matchLabel->setText("");
+        if (m_editor)
+            m_editor->setExtraSelections({});
+        return;
+    }
+
+    if (!collectMatches()) {
+        m_matchLabel->setText("(bad regex)");
+        m_editor->setExtraSelections({});
+        return;
     }
 
     highlightMatches();
@@ -253,6 +275,46 @@ void SearchBar::onTextChanged(const QString &text)
     } else {
         m_matchLabel->setText("0 of 0");
     }
+}
+
+void SearchBar::onDocumentChanged()
+{
+    // Re-run the search when the document is edited so the count and match
+    // positions stay accurate. Skip our own replace edits (they re-search
+    // themselves) and avoid moving the user's cursor/viewport while typing.
+    if (m_inReplace || !isVisible() || !m_editor || m_input->text().isEmpty())
+        return;
+
+    // Anchor on the current match if we have one, otherwise the caret, so the
+    // selection lands on the nearest surviving match after the edit.
+    const int anchorPos = (m_currentMatch >= 0 && m_currentMatch < m_matches.size())
+        ? m_matches[m_currentMatch].start
+        : m_editor->textCursor().position();
+
+    if (!collectMatches()) {
+        m_currentMatch = -1;
+        m_matchLabel->setText("(bad regex)");
+        m_editor->setExtraSelections({});
+        return;
+    }
+
+    if (m_matches.isEmpty()) {
+        m_currentMatch = -1;
+        m_matchLabel->setText("0 of 0");
+        highlightMatches();
+        return;
+    }
+
+    m_currentMatch = m_matches.size() - 1;
+    for (int i = 0; i < m_matches.size(); ++i) {
+        if (m_matches[i].start >= anchorPos) {
+            m_currentMatch = i;
+            break;
+        }
+    }
+
+    m_matchLabel->setText(QString("%1 of %2").arg(m_currentMatch + 1).arg(m_matches.size()));
+    highlightMatches();
 }
 
 void SearchBar::findNext()
@@ -314,7 +376,9 @@ void SearchBar::replaceCurrent()
         }
     }
 
+    m_inReplace = true;
     cursor.insertText(output);
+    m_inReplace = false;
 
     int nextIdx = m_currentMatch;
     onTextChanged(m_input->text());
@@ -347,6 +411,7 @@ void SearchBar::replaceAll()
     }
 
     QTextCursor cursor(m_editor->document());
+    m_inReplace = true;
     cursor.beginEditBlock();
     for (int i = m_matches.size() - 1; i >= 0; --i) {
         const Match &m = m_matches[i];
@@ -361,6 +426,7 @@ void SearchBar::replaceAll()
         cursor.insertText(output);
     }
     cursor.endEditBlock();
+    m_inReplace = false;
 
     onTextChanged(m_input->text());
     m_replaceInput->setFocus();

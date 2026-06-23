@@ -25,12 +25,14 @@ public slots:
 
 private slots:
     void onTextChanged(const QString &text);
+    void onDocumentChanged();
     void findNext();
     void findPrevious();
     void replaceCurrent();
     void replaceAll();
 
 private:
+    bool collectMatches();
     void highlightMatches();
     void goToMatch(int index);
     void setReplaceVisible(bool visible);
@@ -49,6 +51,7 @@ private:
     };
     QVector<Match> m_matches;
     int m_currentMatch = -1;
+    bool m_inReplace = false;
 };
 
 #endif
