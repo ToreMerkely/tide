@@ -135,6 +135,7 @@ private:
     bool m_goLspPromptShown = false;
     QFileSystemWatcher *m_fileWatcher = nullptr;
     QSet<QString> m_pendingReloads;
+    QHash<QString, QByteArray> m_lastWrittenHash;
     QTimer *m_reloadDebounce = nullptr;
     QLabel *m_pathLabel;
     QTimer *m_autoSaveTimer;

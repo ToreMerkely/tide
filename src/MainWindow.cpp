@@ -58,6 +58,7 @@
 #include <QClipboard>
 #include <QToolButton>
 #include <QWheelEvent>
+#include <QCryptographicHash>
 #include <QFileSystemWatcher>
 #include <QTextBrowser>
 #include <QActionGroup>
@@ -974,8 +975,13 @@ void MainWindow::saveTab(int index)
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return;
 
+    const QString content = editor->toPlainText();
     QTextStream out(&file);
-    out << editor->toPlainText();
+    out << content;
+    // Remember what we just wrote so the file watcher can recognise our own
+    // save even if the user edits or undoes before the debounced reload runs.
+    m_lastWrittenHash[path] =
+        QCryptographicHash::hash(content.toUtf8(), QCryptographicHash::Md5);
     editor->document()->setModified(false);
 }
 
@@ -1096,6 +1102,13 @@ void MainWindow::reloadFileFromDisk(const QString &path)
     QTextDocument *doc = states.first().editor->document();
     if (doc->toPlainText() == diskContent)
         return; // matches what we already have (probably our own save)
+
+    // The disk content equals what we last wrote ourselves: this watcher event
+    // is our own save settling, even though the user has since edited/undone in
+    // the editor. Don't treat it as an external modification.
+    if (m_lastWrittenHash.value(path)
+            == QCryptographicHash::hash(diskContent.toUtf8(), QCryptographicHash::Md5))
+        return;
 
     if (doc->isModified()) {
         QString name = QFileInfo(path).fileName();
