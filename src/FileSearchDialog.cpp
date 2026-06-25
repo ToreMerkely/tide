@@ -62,14 +62,14 @@ void FileSearchDialog::populate()
         if (relative.startsWith("build/"))
             continue;
         QString dirPath = QFileInfo(relative).path();
-        bool inHiddenDir = false;
+        bool inSkippedDir = false;
         if (!dirPath.isEmpty() && dirPath != ".") {
             const QStringList parts = dirPath.split('/', Qt::SkipEmptyParts);
             for (const QString &p : parts) {
-                if (p.startsWith('.')) { inHiddenDir = true; break; }
+                if (p.startsWith('.') || p == "__pycache__") { inSkippedDir = true; break; }
             }
         }
-        if (inHiddenDir)
+        if (inSkippedDir)
             continue;
         bool inIgnored = false;
         for (const QString &ig : m_ignoredAbsolute) {

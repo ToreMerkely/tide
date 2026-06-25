@@ -63,7 +63,8 @@ void SymbolSearchDialog::scanSymbols()
     while (it.hasNext()) {
         it.next();
         QString relative = root.relativeFilePath(it.filePath());
-        if (relative.startsWith(".") || relative.startsWith("build/"))
+        if (relative.startsWith(".") || relative.startsWith("build/") ||
+            relative.contains("/__pycache__/") || relative.startsWith("__pycache__/"))
             continue;
 
         QString suffix = it.fileInfo().suffix();
