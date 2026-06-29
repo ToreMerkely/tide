@@ -1699,10 +1699,15 @@ void MainWindow::loadFile(const QString &path, int line)
         m_fileWatcher->addPath(path);
 
     if (line >= 0) {
-        QTextBlock block = editor->document()->findBlockByNumber(line);
-        QTextCursor cursor(block);
-        editor->setTextCursor(cursor);
-        editor->centerCursor();
+        // Defer until the editor has been shown and laid out, otherwise
+        // centerCursor() has no valid viewport size to scroll within and
+        // the view opens at the top instead of at the symbol.
+        QTimer::singleShot(0, editor, [editor, line]() {
+            QTextBlock block = editor->document()->findBlockByNumber(line);
+            QTextCursor cursor(block);
+            editor->setTextCursor(cursor);
+            editor->centerCursor();
+        });
     }
 }
 
