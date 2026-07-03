@@ -1,6 +1,7 @@
 #ifndef SEARCHBAR_H
 #define SEARCHBAR_H
 
+#include <QPointer>
 #include <QWidget>
 
 class QLineEdit;
@@ -43,7 +44,7 @@ private:
     QLabel *m_matchLabel;
     QPushButton *m_caseBtn = nullptr;
     QPushButton *m_regexBtn = nullptr;
-    QPlainTextEdit *m_editor = nullptr;
+    QPointer<QPlainTextEdit> m_editor;
 
     struct Match {
         int start;
