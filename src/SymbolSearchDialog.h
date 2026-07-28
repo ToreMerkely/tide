@@ -2,6 +2,7 @@
 #define SYMBOLSEARCHDIALOG_H
 
 #include <QDialog>
+#include <QSet>
 #include <QVector>
 
 class QLineEdit;
@@ -11,7 +12,9 @@ class SymbolSearchDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit SymbolSearchDialog(const QString &rootPath, QWidget *parent = nullptr);
+    explicit SymbolSearchDialog(const QString &rootPath,
+                                const QSet<QString> &ignoredAbsolutePaths = {},
+                                QWidget *parent = nullptr);
     QString selectedFile() const;
     int selectedLine() const;
 
@@ -41,6 +44,7 @@ private:
     QLineEdit *m_input;
     QListWidget *m_list;
     QString m_rootPath;
+    QSet<QString> m_ignoredAbsolute;
     QVector<Symbol> m_allSymbols;
     QString m_selectedFile;
     int m_selectedLine = -1;

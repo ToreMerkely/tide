@@ -1259,7 +1259,7 @@ void MainWindow::showFileSearch()
 
 void MainWindow::showSymbolSearch()
 {
-    SymbolSearchDialog dialog(QDir::currentPath(), this);
+    SymbolSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
     if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty())
         loadFile(dialog.selectedFile(), dialog.selectedLine() - 1); // LSP uses 0-based lines
 }
@@ -1431,7 +1431,7 @@ void MainWindow::gotoDefinition()
             return;
         }
 
-        SymbolSearchDialog dialog(QDir::currentPath(), this);
+        SymbolSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
         auto matches = dialog.exactMatches(word);
 
         if (matches.size() == 1) {

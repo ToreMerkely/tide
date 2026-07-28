@@ -66,7 +66,7 @@ void FileSearchDialog::populate()
         if (!dirPath.isEmpty() && dirPath != ".") {
             const QStringList parts = dirPath.split('/', Qt::SkipEmptyParts);
             for (const QString &p : parts) {
-                if (p.startsWith('.') || p == "__pycache__") { inSkippedDir = true; break; }
+                if (p == "__pycache__") { inSkippedDir = true; break; }
             }
         }
         if (inSkippedDir)

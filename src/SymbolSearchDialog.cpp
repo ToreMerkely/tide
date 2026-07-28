@@ -9,9 +9,12 @@
 #include <QKeyEvent>
 #include <QRegularExpression>
 
-SymbolSearchDialog::SymbolSearchDialog(const QString &rootPath, QWidget *parent)
+SymbolSearchDialog::SymbolSearchDialog(const QString &rootPath,
+                                       const QSet<QString> &ignoredAbsolutePaths,
+                                       QWidget *parent)
     : QDialog(parent)
     , m_rootPath(rootPath)
+    , m_ignoredAbsolute(ignoredAbsolutePaths)
 {
     setWindowTitle("Go to Symbol");
     setMinimumSize(600, 400);
@@ -57,14 +60,24 @@ void SymbolSearchDialog::scanSymbols()
     static const QRegularExpression cppDefine("^\\s*#define\\s+(\\w+)");
 
     QDir root(m_rootPath);
-    QDirIterator it(m_rootPath, QDir::Files | QDir::NoDotAndDotDot,
+    QDirIterator it(m_rootPath, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
 
     while (it.hasNext()) {
         it.next();
-        QString relative = root.relativeFilePath(it.filePath());
-        if (relative.startsWith(".") || relative.startsWith("build/") ||
+        QString absolute = it.filePath();
+        QString relative = root.relativeFilePath(absolute);
+        if (relative.startsWith("build/") ||
             relative.contains("/__pycache__/") || relative.startsWith("__pycache__/"))
+            continue;
+        bool inIgnored = false;
+        for (const QString &ig : m_ignoredAbsolute) {
+            if (absolute == ig || absolute.startsWith(ig + "/")) {
+                inIgnored = true;
+                break;
+            }
+        }
+        if (inIgnored)
             continue;
 
         QString suffix = it.fileInfo().suffix();
