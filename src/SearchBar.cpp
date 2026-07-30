@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QPlainTextEdit>
+#include <QScrollBar>
 #include <QTextDocument>
 #include <QKeyEvent>
 #include <QRegularExpression>
@@ -112,14 +113,25 @@ SearchBar::SearchBar(QWidget *parent)
 
 void SearchBar::setEditor(QPlainTextEdit *editor)
 {
-    if (m_editor == editor)
+    setTarget(editor, nullptr);
+}
+
+void SearchBar::setBrowser(QTextEdit *browser)
+{
+    setTarget(nullptr, browser);
+}
+
+void SearchBar::setTarget(QPlainTextEdit *editor, QTextEdit *browser)
+{
+    if (m_editor == editor && m_browser == browser)
         return;
-    if (m_editor)
-        disconnect(m_editor->document(), &QTextDocument::contentsChanged,
+    if (QTextDocument *doc = targetDocument())
+        disconnect(doc, &QTextDocument::contentsChanged,
                    this, &SearchBar::onDocumentChanged);
     m_editor = editor;
-    if (m_editor)
-        connect(m_editor->document(), &QTextDocument::contentsChanged,
+    m_browser = browser;
+    if (QTextDocument *doc = targetDocument())
+        connect(doc, &QTextDocument::contentsChanged,
                 this, &SearchBar::onDocumentChanged);
     m_matches.clear();
     m_currentMatch = -1;
@@ -129,11 +141,71 @@ void SearchBar::setEditor(QPlainTextEdit *editor)
         m_matchLabel->setText("");
 }
 
+QTextDocument *SearchBar::targetDocument() const
+{
+    if (m_editor)
+        return m_editor->document();
+    if (m_browser)
+        return m_browser->document();
+    return nullptr;
+}
+
+QTextCursor SearchBar::targetCursor() const
+{
+    if (m_editor)
+        return m_editor->textCursor();
+    if (m_browser)
+        return m_browser->textCursor();
+    return QTextCursor();
+}
+
+void SearchBar::setTargetCursor(const QTextCursor &cursor)
+{
+    if (m_editor)
+        m_editor->setTextCursor(cursor);
+    else if (m_browser)
+        m_browser->setTextCursor(cursor);
+}
+
+void SearchBar::setTargetExtraSelections(const QList<QTextEdit::ExtraSelection> &selections)
+{
+    if (m_editor)
+        m_editor->setExtraSelections(selections);
+    else if (m_browser)
+        m_browser->setExtraSelections(selections);
+}
+
+void SearchBar::centerTargetCursor()
+{
+    if (m_editor) {
+        m_editor->centerCursor();
+        return;
+    }
+    if (!m_browser)
+        return;
+    // QTextEdit has no centerCursor(); scroll the match to mid-viewport by hand.
+    m_browser->ensureCursorVisible();
+    QScrollBar *vb = m_browser->verticalScrollBar();
+    const int delta = m_browser->cursorRect().center().y()
+        - m_browser->viewport()->height() / 2;
+    vb->setValue(vb->value() + delta);
+}
+
+void SearchBar::focusTarget()
+{
+    if (m_editor)
+        m_editor->setFocus();
+    else if (m_browser)
+        m_browser->setFocus();
+}
+
 void SearchBar::activate(bool withReplace)
 {
+    if (targetIsReadOnly())
+        withReplace = false;
     show();
-    if (m_editor) {
-        QString selection = m_editor->textCursor().selectedText();
+    if (hasTarget()) {
+        QString selection = targetCursor().selectedText();
         if (!selection.isEmpty() && !selection.contains(QChar::ParagraphSeparator))
             m_input->setText(selection);
     }
@@ -197,14 +269,14 @@ bool SearchBar::collectMatches()
 {
     m_matches.clear();
 
-    if (!m_editor)
+    if (!hasTarget())
         return true;
 
     const QString text = m_input->text();
     if (text.isEmpty())
         return true;
 
-    QTextDocument *doc = m_editor->document();
+    QTextDocument *doc = targetDocument();
     QTextCursor cursor(doc);
     const bool caseSensitive = m_caseBtn && m_caseBtn->isChecked();
     const bool regex = m_regexBtn && m_regexBtn->isChecked();
@@ -241,17 +313,16 @@ void SearchBar::onTextChanged(const QString &text)
 {
     m_currentMatch = -1;
 
-    if (!m_editor || text.isEmpty()) {
+    if (!hasTarget() || text.isEmpty()) {
         m_matches.clear();
         m_matchLabel->setText("");
-        if (m_editor)
-            m_editor->setExtraSelections({});
+        setTargetExtraSelections({});
         return;
     }
 
     if (!collectMatches()) {
         m_matchLabel->setText("(bad regex)");
-        m_editor->setExtraSelections({});
+        setTargetExtraSelections({});
         return;
     }
 
@@ -259,7 +330,7 @@ void SearchBar::onTextChanged(const QString &text)
 
     if (!m_matches.isEmpty()) {
         // Find the match closest to current cursor position
-        int cursorPos = m_editor->textCursor().position();
+        int cursorPos = targetCursor().position();
         m_currentMatch = 0;
         for (int i = 0; i < m_matches.size(); ++i) {
             // Use the match end so that when the cursor sits at the end of the
@@ -282,19 +353,19 @@ void SearchBar::onDocumentChanged()
     // Re-run the search when the document is edited so the count and match
     // positions stay accurate. Skip our own replace edits (they re-search
     // themselves) and avoid moving the user's cursor/viewport while typing.
-    if (m_inReplace || !isVisible() || !m_editor || m_input->text().isEmpty())
+    if (m_inReplace || !isVisible() || !hasTarget() || m_input->text().isEmpty())
         return;
 
     // Anchor on the current match if we have one, otherwise the caret, so the
     // selection lands on the nearest surviving match after the edit.
     const int anchorPos = (m_currentMatch >= 0 && m_currentMatch < m_matches.size())
         ? m_matches[m_currentMatch].start
-        : m_editor->textCursor().position();
+        : targetCursor().position();
 
     if (!collectMatches()) {
         m_currentMatch = -1;
         m_matchLabel->setText("(bad regex)");
-        m_editor->setExtraSelections({});
+        setTargetExtraSelections({});
         return;
     }
 
@@ -337,9 +408,9 @@ void SearchBar::close()
 {
     hide();
     setReplaceVisible(false);
-    if (m_editor) {
-        m_editor->setExtraSelections({});
-        m_editor->setFocus();
+    if (hasTarget()) {
+        setTargetExtraSelections({});
+        focusTarget();
     }
 }
 
@@ -352,7 +423,7 @@ void SearchBar::setReplaceVisible(bool visible)
 void SearchBar::replaceCurrent()
 {
     if (!m_editor || m_matches.isEmpty() || m_currentMatch < 0)
-        return;
+        return;   // m_editor only: replace never applies to a read-only target
 
     const Match m = m_matches[m_currentMatch];
     const QString replacement = m_replaceInput->text();
@@ -434,7 +505,7 @@ void SearchBar::replaceAll()
 
 void SearchBar::highlightMatches()
 {
-    if (!m_editor)
+    if (!hasTarget())
         return;
 
     QList<QTextEdit::ExtraSelection> selections;
@@ -444,7 +515,7 @@ void SearchBar::highlightMatches()
     for (const Match &m : m_matches) {
         QTextEdit::ExtraSelection sel;
         sel.format = format;
-        QTextCursor cursor(m_editor->document());
+        QTextCursor cursor(targetDocument());
         cursor.setPosition(m.start);
         cursor.setPosition(m.start + m.length, QTextCursor::KeepAnchor);
         sel.cursor = cursor;
@@ -457,27 +528,27 @@ void SearchBar::highlightMatches()
         const Match &m = m_matches[m_currentMatch];
         QTextEdit::ExtraSelection current;
         current.format.setBackground(QColor(0x5A, 0x89, 0x5A));
-        QTextCursor cursor(m_editor->document());
+        QTextCursor cursor(targetDocument());
         cursor.setPosition(m.start);
         cursor.setPosition(m.start + m.length, QTextCursor::KeepAnchor);
         current.cursor = cursor;
         selections.append(current);
     }
 
-    m_editor->setExtraSelections(selections);
+    setTargetExtraSelections(selections);
 }
 
 void SearchBar::goToMatch(int index)
 {
-    if (index < 0 || index >= m_matches.size())
+    if (!hasTarget() || index < 0 || index >= m_matches.size())
         return;
 
     const Match &m = m_matches[index];
-    QTextCursor cursor(m_editor->document());
+    QTextCursor cursor(targetDocument());
     cursor.setPosition(m.start);
     cursor.setPosition(m.start + m.length, QTextCursor::KeepAnchor);
-    m_editor->setTextCursor(cursor);
-    m_editor->centerCursor();
+    setTargetCursor(cursor);
+    centerTargetCursor();
 
     m_matchLabel->setText(QString("%1 of %2").arg(index + 1).arg(m_matches.size()));
 

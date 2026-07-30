@@ -150,6 +150,7 @@ private:
     QString m_pendingTreeSelection;
     int m_pendingTreeScroll = -1;
     QTextBrowser *m_mdPreview;
+    SearchBar *m_mdSearchBar = nullptr;
     QSplitter *m_editorSplitter;
     QSplitter *m_mainSplitter;
     QTimer *m_mdRenderTimer;

@@ -457,8 +457,15 @@ MainWindow::MainWindow(QWidget *parent)
     holderLayout->setSpacing(0);
     m_previewTabHolder->hide();
 
+    // Searches the rendered preview; only ever shown in preview mode, where
+    // the source pane is hidden and this sits directly above the preview.
+    m_mdSearchBar = new SearchBar;
+    m_mdSearchBar->setBrowser(m_mdPreview);
+    m_mdPreview->installEventFilter(this);
+
     rightLayout->addWidget(pathBar);
     rightLayout->addWidget(m_previewTabHolder);
+    rightLayout->addWidget(m_mdSearchBar);
     rightLayout->addWidget(m_editorSplitter, 1);
 
     m_mdRenderTimer = new QTimer(this);
@@ -874,6 +881,14 @@ void MainWindow::onDirectoryLoaded(const QString &path)
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_mdPreview && event->type() == QEvent::KeyPress) {
+        auto *ke = static_cast<QKeyEvent *>(event);
+        if (ke->key() == Qt::Key_Escape && m_mdSearchBar->isVisible()) {
+            m_mdSearchBar->close();
+            return true;
+        }
+    }
+
     if (obj == m_treeView && event->type() == QEvent::KeyPress) {
         auto *ke = static_cast<QKeyEvent *>(event);
         if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
@@ -1223,8 +1238,10 @@ void MainWindow::showSearch()
     if (!editor)
         return;
     QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
-    if (isMarkdownFile(suffix) && m_settings->value("markdown_view_mode") == "preview")
-        setMarkdownMode("split");
+    if (isMarkdownFile(suffix) && m_settings->value("markdown_view_mode") == "preview") {
+        m_mdSearchBar->activate();   // search the rendered preview in place
+        return;
+    }
     if (m_activeGroup)
         m_activeGroup->activateSearch();
 }
@@ -1235,6 +1252,7 @@ void MainWindow::showSearchReplace()
     if (!editor)
         return;
     QString suffix = QFileInfo(tabFilePath(m_activeGroup->currentIndex())).suffix();
+    // Replace needs an editable target, so preview mode still hops to split.
     if (isMarkdownFile(suffix) && m_settings->value("markdown_view_mode") == "preview")
         setMarkdownMode("split");
     if (m_activeGroup)
@@ -2392,7 +2410,18 @@ void MainWindow::applyMarkdownMode()
         m_groupSplitter->show();
     };
 
+    // The preview search bar belongs to preview mode only; anywhere else the
+    // editor's own bar takes over, so dismiss it and hand focus back.
+    auto closePreviewSearch = [this]() {
+        if (!m_mdSearchBar->isVisible())
+            return;
+        m_mdSearchBar->close();
+        if (CodeEditor *ed = currentEditor())
+            ed->setFocus();
+    };
+
     if (!isMd) {
+        closePreviewSearch();
         m_mdPreview->hide();
         for (EditorGroup *g : m_groups) g->setContentVisible(true);
         returnBorrowedTabBar();
@@ -2408,6 +2437,7 @@ void MainWindow::applyMarkdownMode()
     m_mdPreviewAct->setChecked(mode == "preview");
 
     if (mode == "source") {
+        closePreviewSearch();
         m_mdPreview->hide();
         for (EditorGroup *g : m_groups) g->setContentVisible(true);
         returnBorrowedTabBar();
@@ -2426,6 +2456,7 @@ void MainWindow::applyMarkdownMode()
         m_mdPreview->show();
         renderMarkdownPreview();
     } else {
+        closePreviewSearch();
         m_mdPreview->show();
         for (EditorGroup *g : m_groups) g->setContentVisible(true);
         returnBorrowedTabBar();
