@@ -149,7 +149,7 @@ private:
     QSet<QString> m_pendingExpand;
     QString m_pendingTreeSelection;
     int m_pendingTreeScroll = -1;
-    QTextBrowser *m_mdPreview;
+    QTextBrowser *m_mdPreview = nullptr;
     SearchBar *m_mdSearchBar = nullptr;
     QSplitter *m_editorSplitter;
     QSplitter *m_mainSplitter;

@@ -462,6 +462,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_mdSearchBar = new SearchBar;
     m_mdSearchBar->setBrowser(m_mdPreview);
     m_mdPreview->installEventFilter(this);
+    m_mdPreview->viewport()->installEventFilter(this);
 
     rightLayout->addWidget(pathBar);
     rightLayout->addWidget(m_previewTabHolder);
@@ -902,6 +903,19 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                 return true;
             }
         }
+    }
+
+    if (m_mdPreview && obj == m_mdPreview->viewport() && event->type() == QEvent::Wheel) {
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        if (wheel->modifiers() & Qt::ShiftModifier) {
+            int delta = wheel->angleDelta().y();
+            if (delta == 0)
+                delta = wheel->angleDelta().x();
+            QScrollBar *hbar = m_mdPreview->horizontalScrollBar();
+            hbar->setValue(hbar->value() - delta);
+            return true;
+        }
+        return false;
     }
 
     if (obj == m_treeView->viewport() && event->type() == QEvent::Wheel) {
