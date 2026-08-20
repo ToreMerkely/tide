@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake qt6-base-dev qt6-pdf-dev libqt6svg6 \
+            qt6-image-formats-plugins dpkg-dev
+
+      - name: Build release binary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTIDE_VERSION="$VERSION"
+          cmake --build build
+
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGE="tide-${VERSION}-linux-x86_64"
+          mkdir "$STAGE"
+          cp build/tide LICENSE README.md "$STAGE"/
+          tar -czf "${STAGE}.tar.gz" "$STAGE"
+          (cd build && cpack -G DEB)
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "tide ${VERSION}" \
+            --generate-notes \
+            "tide-${VERSION}-linux-x86_64.tar.gz" \
+            build/tide_*.deb

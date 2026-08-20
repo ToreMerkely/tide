@@ -33,6 +33,10 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
+    // Opens a file named on the command line. Called after construction
+    // so it lands on top of any tabs restored from the session.
+    void openPath(const QString &path);
+
 private slots:
     void openFile(const QModelIndex &index);
     void openFileDialog();

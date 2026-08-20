@@ -1558,6 +1558,14 @@ void MainWindow::navigateForward()
     navigateTo(loc.filePath, loc.line);
 }
 
+void MainWindow::openPath(const QString &path)
+{
+    QFileInfo info(path);
+    if (!info.exists() || info.isDir())
+        return;
+    loadFile(info.absoluteFilePath());
+}
+
 void MainWindow::loadFile(const QString &path, int line)
 {
     // If already open in some group, switch focus to it

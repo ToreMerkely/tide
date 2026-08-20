@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=tide
+Comment=A lightweight Qt6 code editor
+Exec=tide %F
+Icon=tide
+Terminal=false
+Categories=Development;Utility;TextEditor;

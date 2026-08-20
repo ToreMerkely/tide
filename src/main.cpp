@@ -1,13 +1,48 @@
 #include <QApplication>
+#include <QCommandLineParser>
+#include <QDir>
+#include <QFileInfo>
 #include <QIcon>
 #include <QPalette>
 #include <QStyleFactory>
+#include <QTextStream>
 #include "MainWindow.h"
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    app.setApplicationName("tide");
+    app.setApplicationVersion(TIDE_VERSION);
     app.setWindowIcon(QIcon(":/tide.svg"));
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(
+        "tide - a lightweight Qt6 code editor.\n\n"
+        "The project tree is rooted at the working directory. Given a\n"
+        "directory, tide roots itself there instead; given a file, it opens\n"
+        "that file in a tab.");
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addPositionalArgument("path", "File or directory to open.", "[path]");
+    parser.process(app);
+
+    // A directory argument has to be applied before MainWindow is built: the
+    // project tree, settings, git branch and LSP roots all derive from the
+    // working directory. A file argument is opened after the session restore.
+    QString fileToOpen;
+    const QStringList positional = parser.positionalArguments();
+    if (!positional.isEmpty()) {
+        QFileInfo info(positional.first());
+        if (!info.exists()) {
+            QTextStream(stderr) << "tide: " << positional.first()
+                                << ": no such file or directory\n";
+            return 1;
+        }
+        if (info.isDir())
+            QDir::setCurrent(info.absoluteFilePath());
+        else
+            fileToOpen = info.absoluteFilePath();
+    }
     app.setStyle(QStyleFactory::create("Fusion"));
 
     QPalette palette;
@@ -28,6 +63,8 @@ int main(int argc, char *argv[])
     app.setPalette(palette);
 
     MainWindow window;
+    if (!fileToOpen.isEmpty())
+        window.openPath(fileToOpen);
     window.show();
 
     return app.exec();
