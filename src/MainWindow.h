@@ -55,6 +55,7 @@ private slots:
     void onEditorModified();
     void onFileChangedOnDisk(const QString &path);
     void reloadFileFromDisk(const QString &path);
+    void ensureWatched(const QString &path);
     void showTabContextMenu(const QPoint &pos);
     void onEditorZoom(int delta);
     void revealCurrentFileInTree();

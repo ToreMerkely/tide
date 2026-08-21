@@ -1033,16 +1033,21 @@ void MainWindow::onEditorModified()
         m_mdRenderTimer->start();
 }
 
+void MainWindow::ensureWatched(const QString &path)
+{
+    if (m_fileWatcher && !m_fileWatcher->files().contains(path)
+        && QFile::exists(path))
+        m_fileWatcher->addPath(path);
+}
+
 void MainWindow::onFileChangedOnDisk(const QString &path)
 {
-    // Some editors replace the file on save; the watcher may stop watching
-    // it. Re-add (deferred so the FS settles).
-    QTimer::singleShot(0, this, [this, path]() {
-        if (m_fileWatcher && !m_fileWatcher->files().contains(path)
-            && QFile::exists(path)) {
-            m_fileWatcher->addPath(path);
-        }
-    });
+    // Some editors replace the file on save; the watcher watches the old inode
+    // and drops the path. Re-add it, deferred so the FS settles -- and once
+    // more later, because during an atomic replace the path can be briefly
+    // absent, and a single missed attempt would lose the watch for good.
+    QTimer::singleShot(0, this, [this, path]() { ensureWatched(path); });
+    QTimer::singleShot(400, this, [this, path]() { ensureWatched(path); });
 
     // Coalesce rapid signals (e.g. git checkout's multi-step file replace) and
     // read the final content once the writes settle, instead of reacting to a
@@ -1057,8 +1062,13 @@ void MainWindow::reloadFileFromDisk(const QString &path)
         // Could be a true delete, or an atomic-replace save mid-rename.
         // Re-check after a short delay; if still gone, close the tabs.
         QTimer::singleShot(250, this, [this, path]() {
-            if (QFile::exists(path))
+            if (QFile::exists(path)) {
+                // It was an atomic replace, not a delete: pick up the new
+                // content and make sure we still watch the new inode.
+                ensureWatched(path);
+                reloadFileFromDisk(path);
                 return;
+            }
             QList<EditorGroup *> emptied;
             QSet<QTextDocument *> docsTouched;
             for (EditorGroup *g : m_groups) {
@@ -1134,12 +1144,17 @@ void MainWindow::reloadFileFromDisk(const QString &path)
 
     // The disk content equals what we last wrote ourselves: this watcher event
     // is our own save settling, even though the user has since edited/undone in
-    // the editor. Don't treat it as an external modification.
-    if (m_lastWrittenHash.value(path)
+    // the editor. Don't treat it as an external modification. Consume the
+    // record either way -- keeping it would suppress a later, genuinely
+    // external write that happens to restore that same content.
+    if (m_lastWrittenHash.take(path)
             == QCryptographicHash::hash(diskContent.toUtf8(), QCryptographicHash::Md5))
         return;
 
     if (doc->isModified()) {
+        // The dialog runs a nested event loop; an autosave firing inside it
+        // would write our stale buffer over the change we are asking about.
+        m_autoSaveTimer->stop();
         QString name = QFileInfo(path).fileName();
         auto answer = QMessageBox::question(this,
             "File Changed on Disk",
