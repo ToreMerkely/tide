@@ -1299,8 +1299,13 @@ void MainWindow::showFileSearch()
     FileSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, initialQuery, this);
     if (dialog.exec() == QDialog::Accepted) {
         const QStringList files = dialog.selectedFiles();
+        const int line = dialog.selectedLine();
         for (const QString &file : files)
-            loadFile(file);
+            loadFile(file, line > 0 ? line - 1 : -1);   // loadFile takes 0-based lines
+        // Opening from the search dialog should hand over the keyboard, even
+        // when the dialog was invoked from the file tree.
+        if (auto *w = m_activeGroup->currentWidget())
+            w->setFocus();
     }
 }
 

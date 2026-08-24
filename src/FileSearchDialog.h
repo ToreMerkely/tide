@@ -17,6 +17,7 @@ public:
                               const QString &initialQuery = {},
                               QWidget *parent = nullptr);
     QStringList selectedFiles() const;
+    int selectedLine() const;   // 1-based line from a "path:line" query, or -1
 
 private slots:
     void onTextChanged(const QString &text);
@@ -34,6 +35,7 @@ private:
     QSet<QString> m_ignoredAbsolute;
     QStringList m_allFiles;
     QStringList m_selectedFiles;
+    int m_queryLine = -1;
     bool m_populated = false;
 };
 

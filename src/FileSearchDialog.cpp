@@ -94,6 +94,11 @@ QStringList FileSearchDialog::selectedFiles() const
     return m_selectedFiles;
 }
 
+int FileSearchDialog::selectedLine() const
+{
+    return m_queryLine;
+}
+
 void FileSearchDialog::onTextChanged(const QString &text)
 {
     m_list->clear();
@@ -108,6 +113,15 @@ void FileSearchDialog::onTextChanged(const QString &text)
     QString query = text;
     while (query.startsWith("./"))
         query.remove(0, 2);
+
+    // A trailing ":34" (or ":34:12" from compiler/grep output) is a line
+    // reference, not part of the name: remember it and match on the path alone.
+    m_queryLine = -1;
+    static const QRegularExpression lineRef(R"(^(.*[^/:]):(\d+)(?::\d+)?:?$)");
+    if (auto m = lineRef.match(query); m.hasMatch()) {
+        query = m.captured(1);
+        m_queryLine = m.captured(2).toInt();
+    }
 
     if (query.isEmpty()) {
         m_list->addItems(m_allFiles);
