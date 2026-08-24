@@ -19,6 +19,7 @@
 #include "SearchBar.h"
 #include "Settings.h"
 #include "FileSearchDialog.h"
+#include "MermaidRenderer.h"
 #include "SymbolSearchDialog.h"
 #include "FileIconProvider.h"
 #include "IgnoreAwareModel.h"
@@ -54,6 +55,7 @@
 #include <QJsonArray>
 #include <QPlainTextDocumentLayout>
 #include <QScrollBar>
+#include <QImageReader>
 #include <QMenu>
 #include <QClipboard>
 #include <QToolButton>
@@ -389,6 +391,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_pathLabel->setContentsMargins(6, 2, 6, 2);
     m_pathLabel->setStyleSheet("color: #808080; font-size: 11px;");
     m_pathLabel->hide();
+
+    m_mermaid = new MermaidRenderer(m_settings->value("mermaid_cli"),
+                                    m_settings->value("mermaid_puppeteer_config"), this);
+    // A diagram renders in the background; re-run the preview once its PNG
+    // lands so the code block is swapped for the image.
+    connect(m_mermaid, &MermaidRenderer::rendered,
+            this, &MainWindow::renderMarkdownPreview);
+    connect(m_mermaid, &MermaidRenderer::renderFailed, this, [this](const QString &msg) {
+        statusBar()->showMessage(msg, 8000);
+    });
 
     m_mdPreview = new QTextBrowser;
     m_mdPreview->setOpenExternalLinks(false);
@@ -2761,7 +2773,7 @@ void MainWindow::renderMarkdownPreview()
     if (!editor)
         return;
     QTextDocument *doc = m_mdPreview->document();
-    doc->setMarkdown(editor->toPlainText());
+    doc->setMarkdown(m_mermaid->substitute(editor->toPlainText()));
 
     // Qt's markdown importer sets HTML cellspacing/border per cell, which
     // CSS border-collapse can't fully undo. Rewrite each table's format
@@ -2786,5 +2798,40 @@ void MainWindow::renderMarkdownPreview()
         }
     }
 
+    scaleMermaidImagesToViewport();
     rebuildMarkdownScrollMap();
+}
+
+void MainWindow::scaleMermaidImagesToViewport()
+{
+    // mermaid-cli renders at a fixed pixel width, which overflows a narrow
+    // preview pane. Shrink our own diagrams to fit; other images keep their
+    // natural size.
+    const QString prefix = m_mermaid->cacheUrlPrefix();
+    QTextDocument *doc = m_mdPreview->document();
+    const qreal maxWidth = m_mdPreview->viewport()->width()
+                           - 2 * doc->documentMargin()
+                           - m_mdPreview->verticalScrollBar()->width();
+    if (maxWidth <= 0)
+        return;
+
+    for (QTextBlock b = doc->begin(); b != doc->end(); b = b.next()) {
+        for (auto it = b.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (!frag.charFormat().isImageFormat())
+                continue;
+            QTextImageFormat fmt = frag.charFormat().toImageFormat();
+            if (!fmt.name().startsWith(prefix))
+                continue;
+            const QSize natural = QImageReader(QUrl(fmt.name()).toLocalFile()).size();
+            if (!natural.isValid() || natural.width() <= maxWidth)
+                continue;
+            fmt.setWidth(maxWidth);
+            fmt.setHeight(natural.height() * maxWidth / natural.width());
+            QTextCursor cur(doc);
+            cur.setPosition(frag.position());
+            cur.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            cur.setCharFormat(fmt);
+        }
+    }
 }

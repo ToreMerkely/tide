@@ -26,6 +26,7 @@ class LspClient;
 class SearchBar;
 class Settings;
 class EditorGroup;
+class MermaidRenderer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -103,6 +104,7 @@ private:
 
     void applyMarkdownMode();
     void renderMarkdownPreview();
+    void scaleMermaidImagesToViewport();
     void setMarkdownMode(const QString &mode);
     void syncPreviewFromEditor();
     void syncEditorFromPreview();
@@ -155,6 +157,7 @@ private:
     QString m_pendingTreeSelection;
     int m_pendingTreeScroll = -1;
     QTextBrowser *m_mdPreview = nullptr;
+    MermaidRenderer *m_mermaid = nullptr;
     SearchBar *m_mdSearchBar = nullptr;
     QSplitter *m_editorSplitter;
     QSplitter *m_mainSplitter;

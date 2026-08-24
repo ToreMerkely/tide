@@ -52,6 +52,7 @@ add_executable(tide
     src/Settings.cpp
     src/FileSearchDialog.cpp
     src/SymbolSearchDialog.cpp
+    src/MermaidRenderer.cpp
     src/FileIconProvider.cpp
     src/IgnoreAwareModel.cpp
     src/ImageViewer.cpp
