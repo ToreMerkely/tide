@@ -218,6 +218,48 @@ static QString readGitBranch(const QString &repoRoot)
     return {};
 }
 
+// Qt's markdown importer hands an HTML block to the rich text parser one line
+// at a time, so a comment spanning lines loses its "<!--" after the first line
+// and the rest lands in the document as visible text. Drop comments up front -
+// markdown does not render them anyway - but leave fenced code alone.
+static QString stripHtmlComments(const QString &markdown)
+{
+    QStringList lines = markdown.split('\n');
+    bool inFence = false;
+    bool inComment = false;
+    for (QString &line : lines) {
+        const QString stripped = line.trimmed();
+        if (!inComment && (stripped.startsWith("```") || stripped.startsWith("~~~"))) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence)
+            continue;
+        QString kept;
+        int pos = 0;
+        while (pos < line.size()) {
+            if (inComment) {
+                int end = line.indexOf("-->", pos);
+                if (end == -1)
+                    break;
+                inComment = false;
+                pos = end + 3;
+            } else {
+                int start = line.indexOf("<!--", pos);
+                if (start == -1) {
+                    kept += line.mid(pos);
+                    break;
+                }
+                kept += line.mid(pos, start - pos);
+                inComment = true;
+                pos = start + 4;
+            }
+        }
+        line = kept;
+    }
+    return lines.join('\n');
+}
+
 QString MainWindow::projectTitlePrefix()
 {
     QString cwd = QDir::currentPath();
@@ -2783,7 +2825,7 @@ void MainWindow::renderMarkdownPreview()
                                                  : m_mdPreviewScroll.value(path, 0);
 
     QTextDocument *doc = m_mdPreview->document();
-    doc->setMarkdown(m_mermaid->substitute(editor->toPlainText()));
+    doc->setMarkdown(m_mermaid->substitute(stripHtmlComments(editor->toPlainText())));
 
     // Qt's markdown importer sets HTML cellspacing/border per cell, which
     // CSS border-collapse can't fully undo. Rewrite each table's format
