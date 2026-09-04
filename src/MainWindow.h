@@ -177,6 +177,10 @@ private:
     bool m_syncingScroll = false;
     struct ScrollAnchor { int sourceLine; int previewY; };
     QList<ScrollAnchor> m_mdScrollAnchors;
+    // One preview widget is shared by every tab, so remember where each file
+    // was scrolled to and put it back when the file is rendered again.
+    QString m_mdPreviewPath;
+    QHash<QString, int> m_mdPreviewScroll;
 };
 
 #endif

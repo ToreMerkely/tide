@@ -2772,6 +2772,16 @@ void MainWindow::renderMarkdownPreview()
     auto *editor = currentEditor();
     if (!editor)
         return;
+
+    // setMarkdown() below resets the scroll position, so remember where the
+    // file on screen was left and where the file about to be rendered was.
+    QScrollBar *pbar = m_mdPreview->verticalScrollBar();
+    const QString path = tabFilePath(m_activeGroup->currentIndex());
+    if (!m_mdPreviewPath.isEmpty())
+        m_mdPreviewScroll[m_mdPreviewPath] = pbar->value();
+    const int restoreY = path == m_mdPreviewPath ? pbar->value()
+                                                 : m_mdPreviewScroll.value(path, 0);
+
     QTextDocument *doc = m_mdPreview->document();
     doc->setMarkdown(m_mermaid->substitute(editor->toPlainText()));
 
@@ -2800,6 +2810,15 @@ void MainWindow::renderMarkdownPreview()
 
     scaleMermaidImagesToViewport();
     rebuildMarkdownScrollMap();
+
+    m_mdPreviewPath = path;
+    // Apply once now and once after the layout settles: until then the
+    // scrollbar maximum can still be too small and clamp the value away.
+    pbar->setValue(restoreY);
+    QTimer::singleShot(0, this, [this, path, restoreY]() {
+        if (m_mdPreviewPath == path)
+            m_mdPreview->verticalScrollBar()->setValue(restoreY);
+    });
 }
 
 void MainWindow::scaleMermaidImagesToViewport()
