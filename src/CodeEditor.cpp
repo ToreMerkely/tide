@@ -6,6 +6,8 @@
 #include <QScrollBar>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QFileInfo>
+#include <climits>
 
 static const int INDENT_WIDTH = 4;
 static const QString INDENT_STR = QString(INDENT_WIDTH, ' ');
@@ -440,6 +442,12 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     if (m_cursorBlinkTimer->isActive())
         clearMultiCursors();
 
+    if (event->key() == Qt::Key_Slash && (event->modifiers() & Qt::ControlModifier)
+        && !(event->modifiers() & Qt::AltModifier)) {
+        toggleComment();
+        return;
+    }
+
     // Normal key handling below
     QTextCursor cursor = textCursor();
 
@@ -511,6 +519,161 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         // Fall through so QPlainTextEdit's default handling still runs.
     }
     QPlainTextEdit::keyPressEvent(event);
+}
+
+CodeEditor::CommentStyle CodeEditor::commentStyleForFile() const
+{
+    const QFileInfo info(property("filePath").toString());
+    const QString suffix = info.suffix().toLower();
+    const QString name = info.fileName();
+
+    static const QSet<QString> hashTypes = {
+        "py", "pyw", "pyi", "yml", "yaml", "sh", "bash", "zsh", "mk",
+        "toml", "ini", "cfg", "conf", "env", "properties", "feature",
+        "tf", "tfvars", "hcl"};
+    static const QSet<QString> slashTypes = {
+        "c", "cpp", "cc", "cxx", "h", "hpp", "hxx", "js", "mjs", "cjs",
+        "jsx", "ts", "tsx", "go", "json"};
+    static const QSet<QString> cssTypes = {"css", "scss", "sass", "less"};
+    static const QSet<QString> markupTypes = {
+        "html", "htm", "xhtml", "xml", "svg", "md", "markdown"};
+
+    // Makefile and Dockerfile carry the language in the name, not the suffix.
+    if (name.compare("Makefile", Qt::CaseInsensitive) == 0
+        || name.compare("Dockerfile", Qt::CaseInsensitive) == 0
+        || suffix.compare("dockerfile", Qt::CaseInsensitive) == 0
+        || hashTypes.contains(suffix))
+        return {"#", {}, {}};
+    if (slashTypes.contains(suffix))
+        return {"//", {}, {}};
+    if (cssTypes.contains(suffix))
+        return {{}, "/*", "*/"};
+    if (markupTypes.contains(suffix))
+        return {{}, "<!--", "-->"};
+    return {};
+}
+
+void CodeEditor::toggleComment()
+{
+    const CommentStyle style = commentStyleForFile();
+    if (style.line.isEmpty() && style.open.isEmpty())
+        return;
+
+    QTextDocument *doc = document();
+    QTextCursor cursor = textCursor();
+    const bool hadSelection = cursor.hasSelection();
+    const int selStart = qMin(cursor.selectionStart(), cursor.selectionEnd());
+    const int selEnd = qMax(cursor.selectionStart(), cursor.selectionEnd());
+
+    QTextBlock first = doc->findBlock(selStart);
+    QTextBlock last = doc->findBlock(selEnd);
+    // A selection ending at column 0 must not drag in the line below it.
+    if (hadSelection && last.position() == selEnd
+        && last.blockNumber() > first.blockNumber())
+        last = last.previous();
+
+    // The undo block belongs to a cursor at the selection: a cursor at
+    // position 0 would make undo jump the view to the top of the file.
+    QTextCursor edit = cursor;
+    edit.beginEditBlock();
+    if (!style.line.isEmpty())
+        toggleLineComments(first, last, style.line);
+    else
+        toggleBlockComment(first, last, style);
+    edit.endEditBlock();
+
+    // Re-select the affected lines so the toggle can be repeated.
+    if (hadSelection) {
+        QTextCursor sel(doc);
+        sel.setPosition(first.position());
+        sel.setPosition(last.position() + last.length() - 1, QTextCursor::KeepAnchor);
+        setTextCursor(sel);
+    }
+}
+
+void CodeEditor::toggleLineComments(const QTextBlock &first, const QTextBlock &last,
+                                    const QString &token)
+{
+    // Blank lines are left alone, so they neither block the "already
+    // commented" verdict nor pull the shared indent column back to zero.
+    bool allCommented = true;
+    int indent = INT_MAX;
+    for (QTextBlock b = first; b.isValid(); b = b.next()) {
+        const QString text = b.text();
+        if (!text.trimmed().isEmpty()) {
+            if (!text.trimmed().startsWith(token))
+                allCommented = false;
+            int lead = 0;
+            while (lead < text.size() && text[lead].isSpace())
+                ++lead;
+            indent = qMin(indent, lead);
+        }
+        if (b.blockNumber() == last.blockNumber())
+            break;
+    }
+    if (indent == INT_MAX)
+        return;
+
+    for (QTextBlock b = first; b.isValid(); b = b.next()) {
+        const QString text = b.text();
+        if (!text.trimmed().isEmpty()) {
+            QTextCursor c(b);
+            if (allCommented) {
+                const int at = text.indexOf(token);
+                int len = token.size();
+                if (at + len < text.size() && text[at + len] == ' ')
+                    ++len;
+                c.setPosition(b.position() + at);
+                c.setPosition(b.position() + at + len, QTextCursor::KeepAnchor);
+                c.removeSelectedText();
+            } else {
+                c.setPosition(b.position() + indent);
+                c.insertText(token + " ");
+            }
+        }
+        if (b.blockNumber() == last.blockNumber())
+            break;
+    }
+}
+
+void CodeEditor::toggleBlockComment(const QTextBlock &first, const QTextBlock &last,
+                                    const CommentStyle &style)
+{
+    const QString firstText = first.text();
+    const QString lastText = last.text();
+    int lead = 0;
+    while (lead < firstText.size() && firstText[lead].isSpace())
+        ++lead;
+    const int closeAt = lastText.lastIndexOf(style.close);
+
+    if (firstText.mid(lead).startsWith(style.open) && closeAt >= 0
+        && lastText.mid(closeAt + style.close.size()).trimmed().isEmpty()) {
+        // Drop the closing token first, while the opening token's position is
+        // still the one we measured.
+        int from = closeAt;
+        if (from > 0 && lastText[from - 1] == ' ')
+            --from;
+        QTextCursor c(last);
+        c.setPosition(last.position() + from);
+        c.setPosition(last.position() + closeAt + style.close.size(), QTextCursor::KeepAnchor);
+        c.removeSelectedText();
+
+        int to = lead + style.open.size();
+        if (to < firstText.size() && firstText[to] == ' ')
+            ++to;
+        QTextCursor o(first);
+        o.setPosition(first.position() + lead);
+        o.setPosition(first.position() + to, QTextCursor::KeepAnchor);
+        o.removeSelectedText();
+        return;
+    }
+
+    QTextCursor c(last);
+    c.setPosition(last.position() + lastText.size());
+    c.insertText(" " + style.close);
+    QTextCursor o(first);
+    o.setPosition(first.position() + lead);
+    o.insertText(style.open + " ");
 }
 
 void CodeEditor::keyReleaseEvent(QKeyEvent *event)

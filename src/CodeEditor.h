@@ -9,6 +9,7 @@
 #include <QTimer>
 
 class LineNumberArea;
+class QTextBlock;
 
 class CodeEditor : public QPlainTextEdit {
     Q_OBJECT
@@ -40,6 +41,17 @@ private slots:
     void updateLineNumberArea(const QRect &rect, int dy);
 
 private:
+    // A language's line-comment token, or - for languages that only have
+    // block comments - the open/close pair. All empty means an unknown file
+    // type, where Ctrl+/ leaves the text alone.
+    struct CommentStyle { QString line, open, close; };
+    CommentStyle commentStyleForFile() const;
+    void toggleComment();
+    void toggleLineComments(const QTextBlock &first, const QTextBlock &last,
+                            const QString &token);
+    void toggleBlockComment(const QTextBlock &first, const QTextBlock &last,
+                            const CommentStyle &style);
+
     void clearMultiCursors();
     void drawMultiCursors();
     void updateMultiCursorSelections();
