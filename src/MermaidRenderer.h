@@ -33,10 +33,12 @@ signals:
 private:
     QString cachePathFor(const QString &diagram) const;
     QString defaultPuppeteerConfig() const;
+    QString writeMermaidConfig() const;
     void startRender(const QString &diagram, const QString &pngPath);
 
     QString m_cli;          // resolved mmdc executable, empty when unavailable
     QString m_puppeteerConfig;
+    QString m_mermaidConfig;
     QString m_cacheDir;
     QSet<QString> m_inFlight;   // png paths currently being rendered
     QSet<QString> m_failed;     // png paths mmdc could not produce

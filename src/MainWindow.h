@@ -104,7 +104,6 @@ private:
 
     void applyMarkdownMode();
     void renderMarkdownPreview();
-    void scaleMermaidImagesToViewport();
     void setMarkdownMode(const QString &mode);
     void syncPreviewFromEditor();
     void syncEditorFromPreview();

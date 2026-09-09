@@ -55,7 +55,6 @@
 #include <QJsonArray>
 #include <QPlainTextDocumentLayout>
 #include <QScrollBar>
-#include <QImageReader>
 #include <QMenu>
 #include <QClipboard>
 #include <QToolButton>
@@ -2850,7 +2849,6 @@ void MainWindow::renderMarkdownPreview()
         }
     }
 
-    scaleMermaidImagesToViewport();
     rebuildMarkdownScrollMap();
 
     m_mdPreviewPath = path;
@@ -2863,36 +2861,3 @@ void MainWindow::renderMarkdownPreview()
     });
 }
 
-void MainWindow::scaleMermaidImagesToViewport()
-{
-    // mermaid-cli renders at a fixed pixel width, which overflows a narrow
-    // preview pane. Shrink our own diagrams to fit; other images keep their
-    // natural size.
-    const QString prefix = m_mermaid->cacheUrlPrefix();
-    QTextDocument *doc = m_mdPreview->document();
-    const qreal maxWidth = m_mdPreview->viewport()->width()
-                           - 2 * doc->documentMargin()
-                           - m_mdPreview->verticalScrollBar()->width();
-    if (maxWidth <= 0)
-        return;
-
-    for (QTextBlock b = doc->begin(); b != doc->end(); b = b.next()) {
-        for (auto it = b.begin(); !it.atEnd(); ++it) {
-            const QTextFragment frag = it.fragment();
-            if (!frag.charFormat().isImageFormat())
-                continue;
-            QTextImageFormat fmt = frag.charFormat().toImageFormat();
-            if (!fmt.name().startsWith(prefix))
-                continue;
-            const QSize natural = QImageReader(QUrl(fmt.name()).toLocalFile()).size();
-            if (!natural.isValid() || natural.width() <= maxWidth)
-                continue;
-            fmt.setWidth(maxWidth);
-            fmt.setHeight(natural.height() * maxWidth / natural.width());
-            QTextCursor cur(doc);
-            cur.setPosition(frag.position());
-            cur.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
-            cur.setCharFormat(fmt);
-        }
-    }
-}

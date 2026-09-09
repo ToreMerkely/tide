@@ -25,6 +25,28 @@ QString firstError(const QByteArray &stderrText)
     }
     return "mmdc produced no output";
 }
+
+// The mmdc flags that decide what the PNG looks like. Part of the cache key,
+// so changing them re-renders rather than serving an image made by the old
+// ones.
+const QStringList kRenderArgs{"-t", "dark", "-b", "transparent", "-w", "800"};
+
+// mermaid scales a diagram to the width it is rendered in - fonts and all - so
+// anything wider than the render viewport arrives shrunk to illegible. The flag
+// is per diagram type, so name every type that honours it and let each diagram
+// come out at its intrinsic size instead.
+QByteArray mermaidConfigJson()
+{
+    static const QStringList types{
+        "flowchart", "sequence", "gantt", "class", "state", "er", "pie",
+        "journey", "requirement", "gitGraph", "c4", "mindmap", "timeline",
+        "quadrantChart", "xyChart", "sankey", "block", "packet", "architecture",
+        "radar", "treemap"};
+    QJsonObject config;
+    for (const QString &type : types)
+        config.insert(type, QJsonObject{{"useMaxWidth", false}});
+    return QJsonDocument(config).toJson(QJsonDocument::Compact);
+}
 }
 
 MermaidRenderer::MermaidRenderer(const QString &cliOverride,
@@ -39,6 +61,7 @@ MermaidRenderer::MermaidRenderer(const QString &cliOverride,
     QDir().mkpath(m_cacheDir);
     if (m_puppeteerConfig.isEmpty())
         m_puppeteerConfig = defaultPuppeteerConfig();
+    m_mermaidConfig = writeMermaidConfig();
 }
 
 // mermaid-cli drives a headless Chrome through puppeteer-core, which insists on
@@ -71,10 +94,26 @@ QString MermaidRenderer::defaultPuppeteerConfig() const
     return path;
 }
 
+QString MermaidRenderer::writeMermaidConfig() const
+{
+    const QString path = m_cacheDir + "/mermaid.json";
+    const QByteArray json = mermaidConfigJson();
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly) && f.readAll() == json)
+        return path;                  // already current
+    f.close();
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return {};
+    f.write(json);
+    return path;
+}
+
 QString MermaidRenderer::cachePathFor(const QString &diagram) const
 {
-    QByteArray hash = QCryptographicHash::hash(diagram.toUtf8(),
-                                               QCryptographicHash::Sha1).toHex();
+    QByteArray hash = QCryptographicHash::hash(
+        diagram.toUtf8() + '\n' + kRenderArgs.join(' ').toUtf8()
+            + '\n' + mermaidConfigJson(),
+        QCryptographicHash::Sha1).toHex();
     return m_cacheDir + "/" + QString::fromLatin1(hash) + ".png";
 }
 
@@ -177,10 +216,12 @@ void MermaidRenderer::startRender(const QString &diagram, const QString &pngPath
         emit renderFailed("Mermaid render failed: could not run " + m_cli);
     });
 
-    QStringList args{"-i", input, "-o", pngPath,
-                     "-t", "dark", "-b", "transparent", "-w", "800"};
+    QStringList args{"-i", input, "-o", pngPath};
+    args << kRenderArgs;
     if (!m_puppeteerConfig.isEmpty())
         args << "-p" << m_puppeteerConfig;
+    if (!m_mermaidConfig.isEmpty())
+        args << "-c" << m_mermaidConfig;
 
     proc->setProgram(m_cli);
     proc->setArguments(args);
