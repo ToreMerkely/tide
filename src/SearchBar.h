@@ -26,10 +26,12 @@ protected:
 
 public slots:
     void close();
+    // Also called directly after a render that had to build the document with
+    // its signals blocked, to re-find the matches the render moved.
+    void onDocumentChanged();
 
 private slots:
     void onTextChanged(const QString &text);
-    void onDocumentChanged();
     void findNext();
     void findPrevious();
     void replaceCurrent();

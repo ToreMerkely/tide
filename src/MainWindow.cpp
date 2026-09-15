@@ -55,6 +55,7 @@
 #include <QJsonArray>
 #include <QPlainTextDocumentLayout>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QMenu>
 #include <QClipboard>
 #include <QToolButton>
@@ -2824,6 +2825,12 @@ void MainWindow::renderMarkdownPreview()
                                                  : m_mdPreviewScroll.value(path, 0);
 
     QTextDocument *doc = m_mdPreview->document();
+    // The markdown importer inserts the document a fragment at a time and
+    // emits contentsChanged after each one, so anything re-reading the
+    // document from that signal - the preview's search bar does - walks a
+    // half-built document and corrupts the heap. Build it unobserved and let
+    // the search bar catch up below, once the document is whole.
+    QSignalBlocker blockPreviewDoc(doc);
     doc->setMarkdown(m_mermaid->substitute(stripHtmlComments(editor->toPlainText())));
 
     // Qt's markdown importer sets HTML cellspacing/border per cell, which
@@ -2848,6 +2855,11 @@ void MainWindow::renderMarkdownPreview()
             stack.append(child);
         }
     }
+
+    blockPreviewDoc.unblock();
+    // The matches all moved with the re-render; the search bar ignores this
+    // unless it is open with a query.
+    m_mdSearchBar->onDocumentChanged();
 
     rebuildMarkdownScrollMap();
 
