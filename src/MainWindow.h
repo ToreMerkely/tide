@@ -33,6 +33,7 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
 
     // Opens a file named on the command line. Called after construction
     // so it lands on top of any tabs restored from the session.

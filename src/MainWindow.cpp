@@ -321,6 +321,14 @@ void MainWindow::queryPrForBranch(const QString &branch)
                        "--json", "number", "--jq", ".[0].number"});
 }
 
+MainWindow::~MainWindow()
+{
+    // ~QWidget kills still-running child processes after our members are
+    // gone; their finished/errorOccurred slots must not run on this.
+    for (QProcess *proc : findChildren<QProcess *>())
+        disconnect(proc, nullptr, this, nullptr);
+}
+
 void MainWindow::updateWindowTitle()
 {
     QString prefix = projectTitlePrefix();
