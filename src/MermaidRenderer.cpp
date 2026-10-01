@@ -26,6 +26,13 @@ QString firstError(const QByteArray &stderrText)
     return "mmdc produced no output";
 }
 
+// Shown in the preview in place of the diagram, so a missing or broken mmdc
+// says what to do about it instead of leaving an unexplained code block.
+QString failureNote(const QString &reason)
+{
+    return "> \u26A0\uFE0F **Mermaid not rendered:** " + reason;
+}
+
 // The mmdc flags that decide what the PNG looks like. Part of the cache key,
 // so changing them re-renders rather than serving an image made by the old
 // ones.
@@ -161,6 +168,11 @@ QString MermaidRenderer::substitute(const QString &markdown)
             out.append(QString());
         } else {
             startRender(diagram, png);
+            if (m_failed.contains(png)) {
+                out.append(QString());
+                out.append(failureNote(m_failed.value(png)));
+                out.append(QString());
+            }
             out.append(lines.mid(i, j - i + 1));   // keep the source fence
         }
         i = j;
@@ -174,9 +186,12 @@ void MermaidRenderer::startRender(const QString &diagram, const QString &pngPath
     if (m_inFlight.contains(pngPath) || m_failed.contains(pngPath))
         return;
     if (m_cli.isEmpty()) {
-        m_failed.insert(pngPath);
-        emit renderFailed("mermaid-cli (mmdc) not found - install it, or set "
-                          "\"mermaid_cli\" in .tide/config.json");
+        const QString reason =
+            "mermaid-cli (mmdc) not found - install it with "
+            "`npm i -g @mermaid-js/mermaid-cli` or `brew install mermaid-cli`, "
+            "or set `mermaid_cli` in .tide/config.json";
+        m_failed.insert(pngPath, reason);
+        emit renderFailed(reason);
         return;
     }
 
@@ -203,17 +218,19 @@ void MermaidRenderer::startRender(const QString &diagram, const QString &pngPath
         }
         // Remember the failure, or every preview refresh would relaunch a
         // render that already told us it cannot succeed.
-        m_failed.insert(pngPath);
-        emit renderFailed("Mermaid render failed: " + firstError(err));
+        const QString reason = firstError(err);
+        m_failed.insert(pngPath, reason);
+        emit renderFailed("Mermaid render failed: " + reason);
     });
     connect(proc, &QProcess::errorOccurred, this, [this, proc, input, pngPath]() {
         if (!m_inFlight.contains(pngPath))
             return;
         m_inFlight.remove(pngPath);
-        m_failed.insert(pngPath);
+        const QString reason = "could not run " + m_cli;
+        m_failed.insert(pngPath, reason);
         QFile::remove(input);
         proc->deleteLater();
-        emit renderFailed("Mermaid render failed: could not run " + m_cli);
+        emit renderFailed("Mermaid render failed: " + reason);
     });
 
     QStringList args{"-i", input, "-o", pngPath};

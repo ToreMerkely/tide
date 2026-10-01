@@ -1,6 +1,7 @@
 #ifndef MERMAIDRENDERER_H
 #define MERMAIDRENDERER_H
 
+#include <QHash>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -41,7 +42,7 @@ private:
     QString m_mermaidConfig;
     QString m_cacheDir;
     QSet<QString> m_inFlight;   // png paths currently being rendered
-    QSet<QString> m_failed;     // png paths mmdc could not produce
+    QHash<QString, QString> m_failed;   // png path -> why it could not render
 };
 
 #endif

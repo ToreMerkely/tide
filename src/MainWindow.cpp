@@ -451,6 +451,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_mermaid, &MermaidRenderer::renderFailed, this, [this](const QString &msg) {
         statusBar()->showMessage(msg, 8000);
     });
+    // Queued: the missing-mmdc failure is reported from inside substitute(),
+    // which renderMarkdownPreview() is in the middle of calling.
+    connect(m_mermaid, &MermaidRenderer::renderFailed,
+            this, &MainWindow::renderMarkdownPreview, Qt::QueuedConnection);
 
     m_mdPreview = new QTextBrowser;
     m_mdPreview->setOpenExternalLinks(false);
