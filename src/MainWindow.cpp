@@ -14,6 +14,7 @@
 #include "DockerfileHighlighter.h"
 #include "TerraformHighlighter.h"
 #include "GoHighlighter.h"
+#include "RegoHighlighter.h"
 #include "EditorGroup.h"
 #include "LspClient.h"
 #include "SearchBar.h"
@@ -1812,6 +1813,8 @@ void MainWindow::loadFile(const QString &path, int line)
                 requestSemanticHighlight(path, editor);
             });
         }
+    } else if (isRegoFile(suffix)) {
+        new RegoHighlighter(editor->document());
     } else if (isGherkinFile(suffix)) {
         new GherkinHighlighter(editor->document());
     } else if (isConfigFile(fileName, suffix)) {
@@ -2494,6 +2497,11 @@ bool MainWindow::isGoFile(const QString &fileName, const QString &suffix)
 {
     Q_UNUSED(fileName);
     return suffix == "go";
+}
+
+bool MainWindow::isRegoFile(const QString &suffix)
+{
+    return suffix == "rego";
 }
 
 bool MainWindow::isImageFile(const QString &suffix)

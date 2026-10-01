@@ -530,7 +530,7 @@ CodeEditor::CommentStyle CodeEditor::commentStyleForFile() const
     static const QSet<QString> hashTypes = {
         "py", "pyw", "pyi", "yml", "yaml", "sh", "bash", "zsh", "mk",
         "toml", "ini", "cfg", "conf", "env", "properties", "feature",
-        "tf", "tfvars", "hcl"};
+        "tf", "tfvars", "hcl", "rego"};
     static const QSet<QString> slashTypes = {
         "c", "cpp", "cc", "cxx", "h", "hpp", "hxx", "js", "mjs", "cjs",
         "jsx", "ts", "tsx", "go", "json"};

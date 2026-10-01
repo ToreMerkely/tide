@@ -48,6 +48,7 @@ add_executable(tide
     src/DockerfileHighlighter.cpp
     src/TerraformHighlighter.cpp
     src/GoHighlighter.cpp
+    src/RegoHighlighter.cpp
     src/EditorGroup.cpp
     src/Settings.cpp
     src/FileSearchDialog.cpp
