@@ -59,6 +59,9 @@ void SymbolSearchDialog::scanSymbols()
     static const QRegularExpression cppFunc("^\\s*(?:[\\w:*&<>]+\\s+)+([\\w~]+)\\s*\\(");
     static const QRegularExpression cppDefine("^\\s*#define\\s+(\\w+)");
 
+    static const QRegularExpression shFunc("^\\s*(?:function\\s+([\\w-]+)|([\\w-]+)\\s*\\(\\s*\\))");
+    static const QRegularExpression shConst("^(?:export\\s+|readonly\\s+)?([A-Z][A-Z_0-9]+)=");
+
     QDir root(m_rootPath);
     QDirIterator it(m_rootPath, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
@@ -84,7 +87,8 @@ void SymbolSearchDialog::scanSymbols()
         bool isPython = (suffix == "py");
         bool isCpp = (suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
                       suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c");
-        if (!isPython && !isCpp)
+        bool isShell = (suffix == "sh" || suffix == "bash");
+        if (!isPython && !isCpp && !isShell)
             continue;
 
         QFile file(it.filePath());
@@ -109,6 +113,20 @@ void SymbolSearchDialog::scanSymbols()
                     continue;
                 }
                 m = pyAssign.match(line);
+                if (m.hasMatch()) {
+                    m_allSymbols.append({m.captured(1), relative, it.filePath(), lineNum, "constant"});
+                    continue;
+                }
+            }
+
+            if (isShell) {
+                auto m = shFunc.match(line);
+                if (m.hasMatch()) {
+                    QString name = m.captured(1).isEmpty() ? m.captured(2) : m.captured(1);
+                    m_allSymbols.append({name, relative, it.filePath(), lineNum, "function"});
+                    continue;
+                }
+                m = shConst.match(line);
                 if (m.hasMatch()) {
                     m_allSymbols.append({m.captured(1), relative, it.filePath(), lineNum, "constant"});
                     continue;

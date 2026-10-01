@@ -46,6 +46,7 @@ private slots:
     void onTabChanged(int index);
     void closeTab(int index);
     void gotoDefinition();
+    void gotoSymbolByName(const QString &word);
     void gotoLine();
     void navigateBack();
     void navigateForward();

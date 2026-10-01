@@ -1520,7 +1520,9 @@ void MainWindow::gotoDefinition()
 
     LspClient *lsp = lspForFile(path);
     if (!lsp) {
-        statusBar()->showMessage("No language server for this file type", 3000);
+        QTextCursor wordCursor = editor->textCursor();
+        wordCursor.select(QTextCursor::WordUnderCursor);
+        gotoSymbolByName(wordCursor.selectedText());
         return;
     }
     if (!lsp->isRunning()) {
@@ -1550,34 +1552,41 @@ void MainWindow::gotoDefinition()
         }
 
         // Fallback: regex symbol scan for the word under the cursor
-        if (word.isEmpty()) {
-            statusBar()->showMessage("No definition found", 3000);
-            return;
-        }
+        gotoSymbolByName(word);
+    });
+}
 
-        SymbolSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
-        auto matches = dialog.exactMatches(word);
+// Jump to a symbol from the regex index; used when there is no language
+// server, or when it finds nothing.
+void MainWindow::gotoSymbolByName(const QString &word)
+{
+    if (word.isEmpty()) {
+        statusBar()->showMessage("No definition found", 3000);
+        return;
+    }
 
-        if (matches.size() == 1) {
+    SymbolSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
+    auto matches = dialog.exactMatches(word);
+
+    if (matches.size() == 1) {
+        pushCurrentLocation();
+        m_forwardStack.clear();
+        navigateTo(matches.first().fullPath, matches.first().line - 1);
+        statusBar()->showMessage("Found via symbol index", 3000);
+        return;
+    }
+
+    if (matches.size() > 1) {
+        dialog.setInitialQuery(word);
+        if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty()) {
             pushCurrentLocation();
             m_forwardStack.clear();
-            navigateTo(matches.first().fullPath, matches.first().line - 1);
-            statusBar()->showMessage("Found via symbol index (LSP returned no result)", 3000);
-            return;
+            navigateTo(dialog.selectedFile(), dialog.selectedLine() - 1);
         }
+        return;
+    }
 
-        if (matches.size() > 1) {
-            dialog.setInitialQuery(word);
-            if (dialog.exec() == QDialog::Accepted && !dialog.selectedFile().isEmpty()) {
-                pushCurrentLocation();
-                m_forwardStack.clear();
-                navigateTo(dialog.selectedFile(), dialog.selectedLine() - 1);
-            }
-            return;
-        }
-
-        statusBar()->showMessage("No definition found", 3000);
-    });
+    statusBar()->showMessage("No definition found", 3000);
 }
 
 void MainWindow::pushCurrentLocation()
