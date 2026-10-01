@@ -950,6 +950,12 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             m_mdSearchBar->close();
             return true;
         }
+        if (ke->modifiers() == Qt::ControlModifier
+            && (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End)) {
+            QScrollBar *vbar = m_mdPreview->verticalScrollBar();
+            vbar->setValue(ke->key() == Qt::Key_Home ? vbar->minimum() : vbar->maximum());
+            return true;
+        }
     }
 
     if (obj == m_treeView && event->type() == QEvent::KeyPress) {
