@@ -1621,7 +1621,8 @@ void MainWindow::pushCurrentLocation()
     QString path = tabFilePath(m_activeGroup->currentIndex());
     if (path.isEmpty())
         return;
-    m_backStack.push({path, editor->textCursor().blockNumber()});
+    const QTextCursor cursor = editor->textCursor();
+    m_backStack.push({path, cursor.blockNumber(), cursor.positionInBlock()});
 }
 
 void MainWindow::gotoLine()
@@ -1648,11 +1649,19 @@ void MainWindow::gotoLine()
     editor->setFocus();
 }
 
-void MainWindow::navigateTo(const QString &path, int line)
+void MainWindow::navigateTo(const QString &path, int line, int column)
 {
     m_navigating = true;
     loadFile(path, line);
     m_navigating = false;
+
+    auto *editor = currentEditor();
+    if (column > 0 && editor) {
+        QTextCursor cursor = editor->textCursor();
+        cursor.setPosition(cursor.block().position()
+                           + qMin(column, cursor.block().length() - 1));
+        editor->setTextCursor(cursor);
+    }
 }
 
 void MainWindow::navigateBack()
@@ -1663,10 +1672,11 @@ void MainWindow::navigateBack()
     auto *editor = currentEditor();
     QString curPath = tabFilePath(m_activeGroup->currentIndex());
     int curLine = editor ? editor->textCursor().blockNumber() : 0;
-    m_forwardStack.push({curPath, curLine});
+    int curColumn = editor ? editor->textCursor().positionInBlock() : 0;
+    m_forwardStack.push({curPath, curLine, curColumn});
 
     NavLocation loc = m_backStack.pop();
-    navigateTo(loc.filePath, loc.line);
+    navigateTo(loc.filePath, loc.line, loc.column);
 }
 
 void MainWindow::navigateForward()
@@ -1677,10 +1687,11 @@ void MainWindow::navigateForward()
     auto *editor = currentEditor();
     QString curPath = tabFilePath(m_activeGroup->currentIndex());
     int curLine = editor ? editor->textCursor().blockNumber() : 0;
-    m_backStack.push({curPath, curLine});
+    int curColumn = editor ? editor->textCursor().positionInBlock() : 0;
+    m_backStack.push({curPath, curLine, curColumn});
 
     NavLocation loc = m_forwardStack.pop();
-    navigateTo(loc.filePath, loc.line);
+    navigateTo(loc.filePath, loc.line, loc.column);
 }
 
 void MainWindow::openPath(const QString &path)

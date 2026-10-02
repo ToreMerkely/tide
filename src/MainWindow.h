@@ -69,10 +69,11 @@ private:
     struct NavLocation {
         QString filePath;
         int line;
+        int column = 0;
     };
 
     void loadFile(const QString &path, int line = -1);
-    void navigateTo(const QString &path, int line);
+    void navigateTo(const QString &path, int line, int column = 0);
     void pushCurrentLocation();
     void saveTab(int index);
     QString projectTitlePrefix();
