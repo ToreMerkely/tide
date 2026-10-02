@@ -62,6 +62,9 @@ void SymbolSearchDialog::scanSymbols()
     static const QRegularExpression shFunc("^\\s*(?:function\\s+([\\w-]+)|([\\w-]+)\\s*\\(\\s*\\))");
     static const QRegularExpression shConst("^(?:export\\s+|readonly\\s+)?([A-Z][A-Z_0-9]+)=");
 
+    static const QRegularExpression regoPackage("^package\\s+([\\w.]+)");
+    static const QRegularExpression regoRule("^(?:default\\s+)?([A-Za-z_]\\w*)(\\s*\\()?");
+
     QDir root(m_rootPath);
     QDirIterator it(m_rootPath, QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
@@ -88,7 +91,8 @@ void SymbolSearchDialog::scanSymbols()
         bool isCpp = (suffix == "cpp" || suffix == "cxx" || suffix == "cc" ||
                       suffix == "h" || suffix == "hpp" || suffix == "hxx" || suffix == "c");
         bool isShell = (suffix == "sh" || suffix == "bash");
-        if (!isPython && !isCpp && !isShell)
+        bool isRego = (suffix == "rego");
+        if (!isPython && !isCpp && !isShell && !isRego)
             continue;
 
         QFile file(it.filePath());
@@ -129,6 +133,20 @@ void SymbolSearchDialog::scanSymbols()
                 m = shConst.match(line);
                 if (m.hasMatch()) {
                     m_allSymbols.append({m.captured(1), relative, it.filePath(), lineNum, "constant"});
+                    continue;
+                }
+            }
+
+            if (isRego) {
+                auto m = regoPackage.match(line);
+                if (m.hasMatch()) {
+                    m_allSymbols.append({m.captured(1), relative, it.filePath(), lineNum, "package"});
+                    continue;
+                }
+                m = regoRule.match(line);
+                if (m.hasMatch() && m.captured(1) != "import" && m.captured(1) != "else") {
+                    QString kind = m.hasCaptured(2) ? "function" : "rule";
+                    m_allSymbols.append({m.captured(1), relative, it.filePath(), lineNum, kind});
                     continue;
                 }
             }
