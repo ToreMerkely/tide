@@ -1523,7 +1523,7 @@ void MainWindow::gotoDefinition()
     if (!lsp) {
         QTextCursor wordCursor = editor->textCursor();
         wordCursor.select(QTextCursor::WordUnderCursor);
-        gotoSymbolByName(wordCursor.selectedText());
+        gotoSymbolByName(wordCursor.selectedText(), path);
         return;
     }
     if (!lsp->isRunning()) {
@@ -1543,7 +1543,7 @@ void MainWindow::gotoDefinition()
     wordCursor.select(QTextCursor::WordUnderCursor);
     QString word = wordCursor.selectedText();
 
-    lsp->gotoDefinition(path, line, column, [this, word](const QVector<LspLocation> &locations) {
+    lsp->gotoDefinition(path, line, column, [this, word, path](const QVector<LspLocation> &locations) {
         if (!locations.isEmpty()) {
             pushCurrentLocation();
             m_forwardStack.clear();
@@ -1553,13 +1553,14 @@ void MainWindow::gotoDefinition()
         }
 
         // Fallback: regex symbol scan for the word under the cursor
-        gotoSymbolByName(word);
+        gotoSymbolByName(word, path);
     });
 }
 
 // Jump to a symbol from the regex index; used when there is no language
-// server, or when it finds nothing.
-void MainWindow::gotoSymbolByName(const QString &word)
+// server, or when it finds nothing. Several matches resolve to the one
+// nearest fromPath: its own file, then its directory, then below it.
+void MainWindow::gotoSymbolByName(const QString &word, const QString &fromPath)
 {
     if (word.isEmpty()) {
         statusBar()->showMessage("No definition found", 3000);
@@ -1568,6 +1569,28 @@ void MainWindow::gotoSymbolByName(const QString &word)
 
     SymbolSearchDialog dialog(QDir::currentPath(), m_ignoredAbsolute, this);
     auto matches = dialog.exactMatches(word);
+
+    if (matches.size() > 1) {
+        const QFileInfo from(fromPath);
+        const QString file = from.absoluteFilePath();
+        const QString dir = from.absolutePath();
+        decltype(matches) sameFile, sameDir, belowDir;
+        for (const auto &m : matches) {
+            const QFileInfo info(m.fullPath);
+            if (info.absoluteFilePath() == file)
+                sameFile.append(m);
+            else if (info.absolutePath() == dir)
+                sameDir.append(m);
+            else if (info.absolutePath().startsWith(dir + "/"))
+                belowDir.append(m);
+        }
+        if (!sameFile.isEmpty())
+            matches = {sameFile.first()};
+        else if (!sameDir.isEmpty())
+            matches = sameDir;
+        else if (belowDir.size() == 1)
+            matches = belowDir;
+    }
 
     if (matches.size() == 1) {
         pushCurrentLocation();
