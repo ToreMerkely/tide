@@ -148,30 +148,38 @@ static QString findGoModRoot(const QString &startPath)
     }
 }
 
-static bool isShellByShebang(const QString &content)
+static QString shebangInterpreter(const QString &content)
 {
     if (!content.startsWith("#!"))
-        return false;
+        return {};
     int eol = content.indexOf('\n');
     QString line = content.left(eol < 0 ? content.size() : eol);
 
     static const QRegularExpression re("^#!\\s*(\\S+)(?:\\s+(\\S+))?");
     auto m = re.match(line);
     if (!m.hasMatch())
-        return false;
+        return {};
 
     QString interp = m.captured(1);
     QString arg = m.captured(2);
     QString last = interp.endsWith("/env") ? arg : interp;
-    if (last.isEmpty())
-        return false;
 
     int slash = last.lastIndexOf('/');
     if (slash >= 0)
         last = last.mid(slash + 1);
+    return last;
+}
 
+static bool isShellByShebang(const QString &content)
+{
+    QString last = shebangInterpreter(content);
     return last == "sh" || last == "bash" || last == "zsh"
         || last == "ksh" || last == "dash" || last == "fish";
+}
+
+static bool isPythonByShebang(const QString &content)
+{
+    return shebangInterpreter(content).startsWith("python");
 }
 
 static QString findExistingVenv(const QString &rootPath, Settings *settings)
@@ -1857,7 +1865,7 @@ void MainWindow::loadFile(const QString &path, int line)
         new YamlHighlighter(editor->document());
     } else if (isShellFile(suffix) || (suffix.isEmpty() && isShellByShebang(content))) {
         new ShellHighlighter(editor->document());
-    } else if (isPythonFile(suffix)) {
+    } else if (isPythonFile(suffix) || (suffix.isEmpty() && isPythonByShebang(content))) {
         new PythonHighlighter(editor->document());
         ensurePythonLsp();
         if (m_pyLsp && m_pyLsp->isRunning()) {
