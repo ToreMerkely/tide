@@ -70,6 +70,8 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QAbstractTextDocumentLayout>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QInputDialog>
 
 static QString findJediLsp(const QString &rootPath, Settings *settings)
@@ -147,6 +149,51 @@ static QString findGoModRoot(const QString &startPath)
             return {};
     }
 }
+
+static bool isCodeBlock(const QTextBlock &block)
+{
+    return block.blockFormat().hasProperty(QTextFormat::BlockCodeLanguage);
+}
+
+static constexpr int kCodePad = 10;
+
+// QTextDocument can't round a block background, so the preview paints a
+// rounded box behind each run of code blocks itself. renderMarkdownPreview()
+// leaves room for the padding with block margins.
+class MarkdownPreview : public QTextBrowser
+{
+protected:
+    void paintEvent(QPaintEvent *e) override
+    {
+        QPainter p(viewport());
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0x2B, 0x2D, 0x30));
+        p.translate(-horizontalScrollBar()->value(), -verticalScrollBar()->value());
+        const QRectF visible = QRectF(e->rect()).translated(horizontalScrollBar()->value(),
+                                                            verticalScrollBar()->value());
+
+        QAbstractTextDocumentLayout *layout = document()->documentLayout();
+        QTextBlock block = document()->begin();
+        while (block.isValid()) {
+            if (!isCodeBlock(block)) {
+                block = block.next();
+                continue;
+            }
+            const QRectF first = layout->blockBoundingRect(block);
+            const QTextLine line = block.layout()->lineAt(0);
+            QRectF last = first;
+            for (block = block.next(); block.isValid() && isCodeBlock(block); block = block.next())
+                last = layout->blockBoundingRect(block);
+            const QRectF box(first.x() + line.x() - kCodePad, first.top() - kCodePad,
+                             line.width() + 2 * kCodePad, last.bottom() - first.top() + 2 * kCodePad);
+            if (box.intersects(visible))
+                p.drawRoundedRect(box, 6, 6);
+        }
+        p.end();
+        QTextBrowser::paintEvent(e);
+    }
+};
 
 static QString shebangInterpreter(const QString &content)
 {
@@ -465,7 +512,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_mermaid, &MermaidRenderer::renderFailed,
             this, &MainWindow::renderMarkdownPreview, Qt::QueuedConnection);
 
-    m_mdPreview = new QTextBrowser;
+    m_mdPreview = new MarkdownPreview;
     m_mdPreview->setOpenExternalLinks(false);
     m_mdPreview->setOpenLinks(false);
     connect(m_mdPreview, &QTextBrowser::anchorClicked, this, [](const QUrl &url) {
@@ -2933,11 +2980,16 @@ void MainWindow::renderMarkdownPreview()
     // The default style sheet only applies to HTML input, so code gets its
     // background here. The importer tags fenced and indented code blocks with
     // BlockCodeLanguage, and inline code with a fixed-pitch char format.
+    // Code blocks get margins to fit the padding of the box MarkdownPreview
+    // paints behind them; the outer margins also keep a gap to the neighbours.
     QTextCursor cursor(doc);
     for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
-        if (block.blockFormat().hasProperty(QTextFormat::BlockCodeLanguage)) {
+        if (isCodeBlock(block)) {
             QTextBlockFormat fmt;
-            fmt.setBackground(QColor(0x2B, 0x2D, 0x30));
+            fmt.setLeftMargin(block.blockFormat().leftMargin() + kCodePad);
+            fmt.setRightMargin(kCodePad);
+            fmt.setTopMargin(isCodeBlock(block.previous()) ? 0 : kCodePad + 6);
+            fmt.setBottomMargin(isCodeBlock(block.next()) ? 0 : kCodePad + 6);
             cursor.setPosition(block.position());
             cursor.mergeBlockFormat(fmt);
             continue;
