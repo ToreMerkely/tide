@@ -498,9 +498,6 @@ MainWindow::MainWindow(QWidget *parent)
             h4 { font-size: 12pt; margin-top: 14px; margin-bottom: 6px; }
             p, li { line-height: 150%; }
             ul, ol { margin: 8px 0; }
-            code { background-color: #3C3F41; padding: 1px 5px; font-family: "JetBrains Mono", monospace; }
-            pre { background-color: #2B2D30; padding: 12px; }
-            pre, pre * { font-family: "JetBrains Mono", monospace; }
             th { background-color: #2B2D30; font-weight: bold; text-align: left; }
             blockquote { border-left: 3px solid #4D5054; padding-left: 12px; color: #888; }
             a { color: #589DF6; }
@@ -2930,6 +2927,30 @@ void MainWindow::renderMarkdownPreview()
                 table->setFormat(fmt);
             }
             stack.append(child);
+        }
+    }
+
+    // The default style sheet only applies to HTML input, so code gets its
+    // background here. The importer tags fenced and indented code blocks with
+    // BlockCodeLanguage, and inline code with a fixed-pitch char format.
+    QTextCursor cursor(doc);
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        if (block.blockFormat().hasProperty(QTextFormat::BlockCodeLanguage)) {
+            QTextBlockFormat fmt;
+            fmt.setBackground(QColor(0x2B, 0x2D, 0x30));
+            cursor.setPosition(block.position());
+            cursor.mergeBlockFormat(fmt);
+            continue;
+        }
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (!frag.charFormat().fontFixedPitch())
+                continue;
+            QTextCharFormat fmt;
+            fmt.setBackground(QColor(0x3C, 0x3F, 0x41));
+            cursor.setPosition(frag.position());
+            cursor.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            cursor.mergeCharFormat(fmt);
         }
     }
 
