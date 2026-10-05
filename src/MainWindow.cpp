@@ -150,6 +150,8 @@ static QString findGoModRoot(const QString &startPath)
     }
 }
 
+// The markdown importer tags fenced and indented code blocks with
+// BlockCodeLanguage, and inline code with a fixed-pitch char format.
 static bool isCodeBlock(const QTextBlock &block)
 {
     return block.blockFormat().hasProperty(QTextFormat::BlockCodeLanguage);
@@ -157,9 +159,11 @@ static bool isCodeBlock(const QTextBlock &block)
 
 static constexpr int kCodePad = 10;
 
-// QTextDocument can't round a block background, so the preview paints a
-// rounded box behind each run of code blocks itself. renderMarkdownPreview()
-// leaves room for the padding with block margins.
+// QTextDocument can't round a background, so the preview paints rounded
+// boxes behind code itself: one per run of code blocks, and one per line an
+// inline code span covers. renderMarkdownPreview() leaves room for the code
+// block padding with block margins; inline boxes spill into the neighbouring
+// spaces instead.
 class MarkdownPreview : public QTextBrowser
 {
 protected:
@@ -168,7 +172,6 @@ protected:
         QPainter p(viewport());
         p.setRenderHint(QPainter::Antialiasing);
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0x2B, 0x2D, 0x30));
         p.translate(-horizontalScrollBar()->value(), -verticalScrollBar()->value());
         const QRectF visible = QRectF(e->rect()).translated(horizontalScrollBar()->value(),
                                                             verticalScrollBar()->value());
@@ -176,22 +179,64 @@ protected:
         QAbstractTextDocumentLayout *layout = document()->documentLayout();
         QTextBlock block = document()->begin();
         while (block.isValid()) {
+            const QRectF first = layout->blockBoundingRect(block);
             if (!isCodeBlock(block)) {
+                if (first.intersects(visible))
+                    paintInlineCode(p, block, first.topLeft());
                 block = block.next();
                 continue;
             }
-            const QRectF first = layout->blockBoundingRect(block);
             const QTextLine line = block.layout()->lineAt(0);
             QRectF last = first;
             for (block = block.next(); block.isValid() && isCodeBlock(block); block = block.next())
                 last = layout->blockBoundingRect(block);
             const QRectF box(first.x() + line.x() - kCodePad, first.top() - kCodePad,
                              line.width() + 2 * kCodePad, last.bottom() - first.top() + 2 * kCodePad);
-            if (box.intersects(visible))
+            if (box.intersects(visible)) {
+                p.setBrush(QColor(0x2B, 0x2D, 0x30));
                 p.drawRoundedRect(box, 6, 6);
+            }
         }
         p.end();
         QTextBrowser::paintEvent(e);
+    }
+
+private:
+    static void paintInlineCode(QPainter &p, const QTextBlock &block, QPointF origin)
+    {
+        p.setBrush(QColor(0x3C, 0x3F, 0x41));
+        // Adjacent fixed-pitch fragments (e.g. bold inside code) form one span.
+        int start = -1;
+        int end = -1;
+        auto flush = [&]() {
+            if (start < 0)
+                return;
+            const QTextLayout *tl = block.layout();
+            for (int i = 0; i < tl->lineCount(); ++i) {
+                const QTextLine line = tl->lineAt(i);
+                const int s = qMax(start, line.textStart());
+                const int e = qMin(end, line.textStart() + line.textLength());
+                if (s >= e)
+                    continue;
+                const qreal x1 = line.cursorToX(s);
+                const qreal x2 = line.cursorToX(e);
+                p.drawRoundedRect(QRectF(origin.x() + x1 - 3, origin.y() + line.y(),
+                                         x2 - x1 + 6, line.height()), 3, 3);
+            }
+            start = -1;
+        };
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            const int fragStart = frag.position() - block.position();
+            if (!frag.charFormat().fontFixedPitch()) {
+                flush();
+                continue;
+            }
+            if (start < 0)
+                start = fragStart;
+            end = fragStart + frag.length();
+        }
+        flush();
     }
 };
 
@@ -2977,33 +3022,19 @@ void MainWindow::renderMarkdownPreview()
         }
     }
 
-    // The default style sheet only applies to HTML input, so code gets its
-    // background here. The importer tags fenced and indented code blocks with
-    // BlockCodeLanguage, and inline code with a fixed-pitch char format.
-    // Code blocks get margins to fit the padding of the box MarkdownPreview
-    // paints behind them; the outer margins also keep a gap to the neighbours.
+    // Make room for the padding of the box MarkdownPreview paints behind each
+    // run of code blocks; the outer margins also keep a gap to the neighbours.
     QTextCursor cursor(doc);
     for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
-        if (isCodeBlock(block)) {
-            QTextBlockFormat fmt;
-            fmt.setLeftMargin(block.blockFormat().leftMargin() + kCodePad);
-            fmt.setRightMargin(kCodePad);
-            fmt.setTopMargin(isCodeBlock(block.previous()) ? 0 : kCodePad + 6);
-            fmt.setBottomMargin(isCodeBlock(block.next()) ? 0 : kCodePad + 6);
-            cursor.setPosition(block.position());
-            cursor.mergeBlockFormat(fmt);
+        if (!isCodeBlock(block))
             continue;
-        }
-        for (auto it = block.begin(); !it.atEnd(); ++it) {
-            const QTextFragment frag = it.fragment();
-            if (!frag.charFormat().fontFixedPitch())
-                continue;
-            QTextCharFormat fmt;
-            fmt.setBackground(QColor(0x3C, 0x3F, 0x41));
-            cursor.setPosition(frag.position());
-            cursor.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
-            cursor.mergeCharFormat(fmt);
-        }
+        QTextBlockFormat fmt;
+        fmt.setLeftMargin(block.blockFormat().leftMargin() + kCodePad);
+        fmt.setRightMargin(kCodePad);
+        fmt.setTopMargin(isCodeBlock(block.previous()) ? 0 : kCodePad + 6);
+        fmt.setBottomMargin(isCodeBlock(block.next()) ? 0 : kCodePad + 6);
+        cursor.setPosition(block.position());
+        cursor.mergeBlockFormat(fmt);
     }
 
     blockPreviewDoc.unblock();
