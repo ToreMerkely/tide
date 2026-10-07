@@ -3048,9 +3048,15 @@ void MainWindow::renderMarkdownPreview()
     // Apply once now and once after the layout settles: until then the
     // scrollbar maximum can still be too small and clamp the value away.
     pbar->setValue(restoreY);
+    // The document was rebuilt with its signals blocked, so the browser never
+    // saw the change and would only repaint what the layout and the scroll
+    // happen to invalidate, leaving pixels of the previous render behind.
+    m_mdPreview->viewport()->update();
     QTimer::singleShot(0, this, [this, path, restoreY]() {
-        if (m_mdPreviewPath == path)
+        if (m_mdPreviewPath == path) {
             m_mdPreview->verticalScrollBar()->setValue(restoreY);
+            m_mdPreview->viewport()->update();
+        }
     });
 }
 
