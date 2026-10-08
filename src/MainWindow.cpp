@@ -846,6 +846,10 @@ void MainWindow::saveSession()
             st["line"] = editor->textCursor().blockNumber();
             st["col"] = editor->textCursor().columnNumber();
             st["scroll"] = editor->verticalScrollBar()->value();
+            if (path == m_mdPreviewPath)
+                st["previewScroll"] = m_mdPreview->verticalScrollBar()->value();
+            else if (m_mdPreviewScroll.contains(path))
+                st["previewScroll"] = m_mdPreviewScroll.value(path);
             editorState[path] = st;
         }
         groupFiles.append(gPaths);
@@ -913,6 +917,13 @@ void MainWindow::restoreSession()
 
     QString activePath = m_settings->value("session.activeFile");
     QJsonObject editorState = m_settings->valueObject("session.editorState");
+    // Seeded before any file loads, since loading renders the preview, and
+    // renderMarkdownPreview() takes the position from here on first render.
+    for (auto it = editorState.begin(); it != editorState.end(); ++it) {
+        const QJsonObject st = it.value().toObject();
+        if (st.contains("previewScroll"))
+            m_mdPreviewScroll[it.key()] = st.value("previewScroll").toInt();
+    }
 
     auto applyEditorState = [&](const QString &path) {
         auto *editor = qobject_cast<CodeEditor *>(
@@ -1308,17 +1319,19 @@ void MainWindow::reloadFileFromDisk(const QString &path)
         return;
     QString diskContent = QTextStream(&f).readAll();
 
+    // Consume the record of our last write before any early return -- keeping
+    // it would suppress a later, genuinely external write that happens to
+    // restore that same content.
+    const QByteArray lastWritten = m_lastWrittenHash.take(path);
+
     QTextDocument *doc = states.first().editor->document();
     if (doc->toPlainText() == diskContent)
         return; // matches what we already have (probably our own save)
 
     // The disk content equals what we last wrote ourselves: this watcher event
     // is our own save settling, even though the user has since edited/undone in
-    // the editor. Don't treat it as an external modification. Consume the
-    // record either way -- keeping it would suppress a later, genuinely
-    // external write that happens to restore that same content.
-    if (m_lastWrittenHash.take(path)
-            == QCryptographicHash::hash(diskContent.toUtf8(), QCryptographicHash::Md5))
+    // the editor. Don't treat it as an external modification.
+    if (lastWritten == QCryptographicHash::hash(diskContent.toUtf8(), QCryptographicHash::Md5))
         return;
 
     if (doc->isModified()) {
@@ -3038,23 +3051,42 @@ void MainWindow::renderMarkdownPreview()
     }
 
     blockPreviewDoc.unblock();
+    // The layout built while the importer inserted fragments can come out too
+    // short, leaving the end of the document unpainted; lay it out afresh.
+    doc->markContentsDirty(0, doc->characterCount());
     // The matches all moved with the re-render; the search bar ignores this
     // unless it is open with a query.
     m_mdSearchBar->onDocumentChanged();
 
     rebuildMarkdownScrollMap();
 
+    // A hidden preview has no real scroll range, so the position set below
+    // would be clamped away; until a visible render, the stored value holds.
+    if (!m_mdPreview->isVisible()) {
+        m_mdPreviewPath.clear();
+        return;
+    }
     m_mdPreviewPath = path;
+    // In split mode the preview follows the editor; restoring its own old
+    // position would drag the editor along through syncEditorFromPreview().
+    // The sync has to run here, since a sync made while restoring the session
+    // used anchors from a preview that was not yet shown.
     // Apply once now and once after the layout settles: until then the
     // scrollbar maximum can still be too small and clamp the value away.
-    pbar->setValue(restoreY);
+    auto place = [this, restoreY]() {
+        if (m_settings->value("markdown_view_mode") == "split")
+            syncPreviewFromEditor();
+        else
+            m_mdPreview->verticalScrollBar()->setValue(restoreY);
+    };
+    place();
     // The document was rebuilt with its signals blocked, so the browser never
     // saw the change and would only repaint what the layout and the scroll
     // happen to invalidate, leaving pixels of the previous render behind.
     m_mdPreview->viewport()->update();
-    QTimer::singleShot(0, this, [this, path, restoreY]() {
+    QTimer::singleShot(0, this, [this, path, place]() {
         if (m_mdPreviewPath == path) {
-            m_mdPreview->verticalScrollBar()->setValue(restoreY);
+            place();
             m_mdPreview->viewport()->update();
         }
     });
