@@ -1901,6 +1901,30 @@ void MainWindow::loadFile(const QString &path, int line)
     QTextStream in(&file);
     QString content = in.readAll();
 
+    // Qt lays a block out as a single text line and redoes that whenever its
+    // formats change, so a very long line makes highlighting, and even the
+    // first layout, take tens of seconds.
+    qsizetype longestLine = 0;
+    for (qsizetype start = 0; start <= content.size();) {
+        qsizetype end = content.indexOf('\n', start);
+        if (end < 0)
+            end = content.size();
+        longestLine = qMax(longestLine, end - start);
+        start = end + 1;
+    }
+    constexpr qsizetype kMaxHighlightLine = 20000;
+    constexpr qsizetype kMaxConfirmLine = 1000000;
+    if (longestLine > kMaxConfirmLine) {
+        auto answer = QMessageBox::question(this,
+            "Very Long Line",
+            QString("%1 has a line of %2 characters. Opening it will take a long "
+                    "time and the editor will stay sluggish.\n\nOpen anyway?")
+                .arg(QFileInfo(path).fileName()).arg(longestLine),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes)
+            return;
+    }
+
     auto *editor = new CodeEditor;
     QFont f = editor->font();
     f.setPointSize(m_settings->valueInt("editor_font_size", 12));
@@ -1922,7 +1946,11 @@ void MainWindow::loadFile(const QString &path, int line)
 
     QString suffix = QFileInfo(path).suffix();
     QString fileName = QFileInfo(path).fileName();
-    if (isMakefile(fileName, suffix)) {
+    if (longestLine > kMaxHighlightLine) {
+        statusBar()->showMessage(
+            QString("Syntax highlighting off: %1 has a line of %2 characters")
+                .arg(fileName).arg(longestLine), 8000);
+    } else if (isMakefile(fileName, suffix)) {
         new MakefileHighlighter(editor->document());
     } else if (isCppFile(suffix)) {
         new CppHighlighter(editor->document());
