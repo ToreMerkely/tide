@@ -36,7 +36,7 @@ QString failureNote(const QString &reason)
 // The mmdc flags that decide what the PNG looks like. Part of the cache key,
 // so changing them re-renders rather than serving an image made by the old
 // ones.
-const QStringList kRenderArgs{"-t", "dark", "-b", "transparent", "-w", "800"};
+const QStringList kRenderArgs{"-t", "dark", "-b", "transparent"};
 
 // mermaid scales a diagram to the width it is rendered in - fonts and all - so
 // anything wider than the render viewport arrives shrunk to illegible. The flag
