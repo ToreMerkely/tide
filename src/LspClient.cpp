@@ -14,6 +14,23 @@ LspClient::LspClient(const QString &command, const QStringList &args,
     , m_rootPath(rootPath)
 {
     connect(m_process, &QProcess::readyReadStandardOutput, this, &LspClient::onReadyRead);
+    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            reportFailure();
+    });
+    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this]() { reportFailure(); });
+}
+
+void LspClient::reportFailure()
+{
+    if (m_initialized || m_failureReported)
+        return;
+    m_failureReported = true;
+    QString err = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
+    if (err.isEmpty())
+        err = m_process->errorString();
+    emit failed(err);
 }
 
 void LspClient::setEnvironment(const QStringList &env)
@@ -29,6 +46,7 @@ void LspClient::setEnvironment(const QStringList &env)
 
 LspClient::~LspClient()
 {
+    m_failureReported = true;  // killing the server below is not a failure
     if (m_process->state() != QProcess::NotRunning) {
         m_process->kill();
         m_process->waitForFinished(1000);
@@ -86,6 +104,7 @@ void LspClient::start()
     params["capabilities"] = caps;
 
     sendRequest("initialize", params, [this](const QJsonObject &response) {
+        m_initialized = true;
         // Capture semantic token legend
         QJsonObject result = response["result"].toObject();
         QJsonObject serverCaps = result["capabilities"].toObject();

@@ -83,6 +83,9 @@ private:
     QString tabFilePath(int index) const;
     LspClient *lspForFile(const QString &path) const;
     void ensurePythonLsp();
+    void startPythonLsp(const QString &lspBin, bool reopenFiles);
+    void onPythonLspFailed(const QString &lspBin, const QString &err);
+    void browsePythonVenv();
     void requestSemanticHighlight(const QString &path, CodeEditor *editor);
     static bool isCppFile(const QString &suffix);
     static bool isPythonFile(const QString &suffix);

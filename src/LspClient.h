@@ -41,6 +41,8 @@ public:
 
 signals:
     void ready();
+    // The server failed to start or exited before answering `initialize`.
+    void failed(const QString &stderrText);
 
 private slots:
     void onReadyRead();
@@ -51,6 +53,7 @@ private:
     void sendNotification(const QString &method, const QJsonObject &params);
     void sendMessage(const QJsonObject &msg);
     void handleMessage(const QJsonObject &msg);
+    void reportFailure();
 
     QProcess *m_process;
     QString m_command;
@@ -62,6 +65,8 @@ private:
     QMap<QString, int> m_fileVersions;
     QStringList m_tokenTypes;
     QStringList m_tokenModifiers;
+    bool m_initialized = false;
+    bool m_failureReported = false;
 };
 
 #endif
